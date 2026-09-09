@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import StockPicker from '../components/StockPicker';
+import ImportExcelModal from '../components/ImportExcelModal';
 import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { addTransaction, getAllTransactions } from '../db/transactionsRepo';
@@ -43,6 +44,7 @@ export default function AddTransactionScreen() {
   const [dateObj, setDateObj] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [importVisible, setImportVisible] = useState(false);
 
   function handleDateChange(event: DateTimePickerEvent, selected?: Date) {
     if (Platform.OS === 'android') {
@@ -121,6 +123,15 @@ export default function AddTransactionScreen() {
         contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
       >
+        <Pressable
+          style={styles.importButton}
+          onPress={() => setImportVisible(true)}
+          accessibilityRole="button"
+        >
+          <Ionicons name="document-attach-outline" size={18} color={colors.primary} />
+          <Text style={styles.importButtonText}>Excel'den İçe Aktar</Text>
+        </Pressable>
+
         <Text style={styles.label}>Hisse</Text>
         <StockPicker
           stocks={stocks}
@@ -224,6 +235,12 @@ export default function AddTransactionScreen() {
           )}
         </Pressable>
       </ScrollView>
+
+      <ImportExcelModal
+        visible={importVisible}
+        onClose={() => setImportVisible(false)}
+        onImported={reloadStocks}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -247,6 +264,23 @@ const styles = StyleSheet.create({
     minHeight: touchTarget.minSize,
     color: colors.textPrimary,
     fontFamily: typography.fontRegular,
+    fontSize: typography.body.fontSize,
+  },
+  importButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    minHeight: touchTarget.minSize,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
+  },
+  importButtonText: {
+    color: colors.primary,
+    fontFamily: typography.fontMedium,
     fontSize: typography.body.fontSize,
   },
   dateInput: {
