@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { showAlert } from './AppAlert';
 import { addCustomStock, deleteStock, getAllStocks } from '../db/stocksRepo';
 import { Stock } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
@@ -39,7 +40,7 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
     const symbol = query.trim().toUpperCase();
     if (!symbol) return;
     if (!newStockName.trim()) {
-      Alert.alert('Hata', 'Lütfen hissenin adını da gir.');
+      showAlert('Hata', 'Lütfen hissenin adını da gir.');
       return;
     }
     try {
@@ -52,13 +53,13 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
       }
       closeModal();
     } catch (error) {
-      Alert.alert('Hata', 'Bu hisse zaten ekli olabilir.');
+      showAlert('Hata', 'Bu hisse zaten ekli olabilir.');
     }
   }
 
   function handleLongPressRow(item: Stock) {
     if (!item.isCustom) return;
-    Alert.alert('Hisseyi sil', `${item.symbol} listeden silinsin mi?`, [
+    showAlert('Hisseyi sil', `${item.symbol} listeden silinsin mi?`, [
       { text: 'Vazgeç', style: 'cancel' },
       {
         text: 'Sil',
@@ -69,7 +70,7 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
             onStocksChanged();
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Hisse silinemedi.';
-            Alert.alert('Hata', message);
+            showAlert('Hata', message);
           }
         },
       },

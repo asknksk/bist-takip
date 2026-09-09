@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import { calculatePortfolio } from '../domain/calculations';
@@ -22,7 +23,7 @@ export default function PortfolioScreen() {
           if (!cancelled) setRows(calculatePortfolio(stocks, txs));
         })
         .catch(() => {
-          if (!cancelled) Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+          if (!cancelled) showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
         })
         .finally(() => {
           if (!cancelled) setLoading(false);

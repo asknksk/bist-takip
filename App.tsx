@@ -9,6 +9,7 @@ import {
   IBMPlexSans_700Bold,
 } from '@expo-google-fonts/ibm-plex-sans';
 import RootNavigator from './src/navigation/RootNavigator';
+import { AppAlertHost } from './src/components/AppAlert';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -34,6 +35,7 @@ export default function App() {
     <>
       <StatusBar style="light" />
       <RootNavigator />
+      <AppAlertHost />
     </>
   );
 }

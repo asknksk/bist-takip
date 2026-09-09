@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Alert, ScrollView, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { deleteTransaction, getAllTransactions } from '../db/transactionsRepo';
 import { calculateDailyRealizedPnL } from '../domain/calculations';
@@ -50,7 +51,7 @@ export default function HistoryScreen() {
         });
       })
       .catch(() => {
-        Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+        showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -90,7 +91,7 @@ export default function HistoryScreen() {
   }
 
   function handleDelete(id: number) {
-    Alert.alert('İşlemi sil', 'Bu işlemi silmek istediğine emin misin?', [
+    showAlert('İşlemi sil', 'Bu işlemi silmek istediğine emin misin?', [
       { text: 'Vazgeç', style: 'cancel' },
       {
         text: 'Sil',
@@ -100,7 +101,7 @@ export default function HistoryScreen() {
             await deleteTransaction(id);
             load();
           } catch (error) {
-            Alert.alert('Hata', 'İşlem silinemedi. Lütfen tekrar deneyin.');
+            showAlert('Hata', 'İşlem silinemedi. Lütfen tekrar deneyin.');
           }
         },
       },

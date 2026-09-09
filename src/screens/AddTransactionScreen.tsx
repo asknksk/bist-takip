@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import StockPicker from '../components/StockPicker';
+import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { addTransaction, getAllTransactions } from '../db/transactionsRepo';
 import { calculatePortfolioRow, validateSellQuantity } from '../domain/calculations';
@@ -56,7 +56,7 @@ export default function AddTransactionScreen() {
     getAllStocks()
       .then(setStocks)
       .catch(() => {
-        Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+        showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
       });
   }, []);
 
@@ -71,15 +71,15 @@ export default function AddTransactionScreen() {
     const priceNum = Number(price.replace(',', '.'));
 
     if (!stockId) {
-      Alert.alert('Hata', 'Lütfen bir hisse seç.');
+      showAlert('Hata', 'Lütfen bir hisse seç.');
       return;
     }
     if (!Number.isFinite(quantityNum) || quantityNum <= 0) {
-      Alert.alert('Hata', 'Adet pozitif bir sayı olmalı.');
+      showAlert('Hata', 'Adet pozitif bir sayı olmalı.');
       return;
     }
     if (!Number.isFinite(priceNum) || priceNum <= 0) {
-      Alert.alert('Hata', 'Fiyat pozitif bir sayı olmalı.');
+      showAlert('Hata', 'Fiyat pozitif bir sayı olmalı.');
       return;
     }
 
@@ -90,23 +90,23 @@ export default function AddTransactionScreen() {
       if (type === 'sell') {
         const stock = stocks.find((s) => s.id === stockId);
         if (!stock) {
-          Alert.alert('Hata', 'Seçili hisse artık mevcut değil. Lütfen tekrar seç.');
+          showAlert('Hata', 'Seçili hisse artık mevcut değil. Lütfen tekrar seç.');
           return;
         }
         const allTxs = await getAllTransactions();
         const row = calculatePortfolioRow(stock, allTxs);
         if (!validateSellQuantity(row.heldQuantity, quantityNum)) {
-          Alert.alert('Hata', `Elinde bu hisseden yalnızca ${row.heldQuantity} adet var.`);
+          showAlert('Hata', `Elinde bu hisseden yalnızca ${row.heldQuantity} adet var.`);
           return;
         }
       }
 
       await addTransaction(stockId, type, quantityNum, priceNum, date);
-      Alert.alert('Kaydedildi', 'İşlem başarıyla eklendi.');
+      showAlert('Kaydedildi', 'İşlem başarıyla eklendi.');
       setQuantity('');
       setPrice('');
     } catch (error) {
-      Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+      showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
     } finally {
       setSubmitting(false);
     }

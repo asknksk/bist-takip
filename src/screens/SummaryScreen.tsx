@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Alert, Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarChart, LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
+import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import {
@@ -56,7 +57,7 @@ export default function SummaryScreen() {
           setDaily(calculateDailyRealizedPnL(stocks, txs));
         })
         .catch(() => {
-          if (!cancelled) Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+          if (!cancelled) showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
