@@ -1,4 +1,4 @@
-import { CumulativePnLPoint, DailyPnL, PortfolioRow, Stock, Transaction } from './types';
+import { CumulativePnLPoint, DailyPnL, MonthlyPnL, PortfolioRow, Stock, Transaction } from './types';
 
 function sum(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0);
@@ -84,4 +84,24 @@ export function calculateDailyRealizedPnL(stocks: Stock[], transactions: Transac
   return Array.from(pnlByDate.entries())
     .map(([date, realizedPnL]) => ({ date, realizedPnL }))
     .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function calculateMonthlyRealizedPnL(stocks: Stock[], transactions: Transaction[]): MonthlyPnL[] {
+  const avgBuyPriceByStock = new Map<number, number>();
+  for (const stock of stocks) {
+    avgBuyPriceByStock.set(stock.id, calculatePortfolioRow(stock, transactions).avgBuyPrice);
+  }
+
+  const pnlByMonth = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.type !== 'sell') continue;
+    const avgBuyPrice = avgBuyPriceByStock.get(t.stockId) ?? 0;
+    const pnl = t.quantity * (t.price - avgBuyPrice);
+    const month = t.date.slice(0, 7);
+    pnlByMonth.set(month, (pnlByMonth.get(month) ?? 0) + pnl);
+  }
+
+  return Array.from(pnlByMonth.entries())
+    .map(([month, realizedPnL]) => ({ month, realizedPnL }))
+    .sort((a, b) => b.month.localeCompare(a.month));
 }

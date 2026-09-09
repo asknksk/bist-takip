@@ -5,6 +5,7 @@ import {
   validateSellQuantity,
   calculateCumulativePnLOverTime,
   calculateDailyRealizedPnL,
+  calculateMonthlyRealizedPnL,
 } from '../calculations';
 import { Stock, Transaction } from '../types';
 
@@ -145,5 +146,29 @@ describe('calculateDailyRealizedPnL', () => {
   test('returns an empty array when there are no sell transactions', () => {
     const txs = [tx({ type: 'buy' })];
     expect(calculateDailyRealizedPnL([stock], txs)).toEqual([]);
+  });
+});
+
+describe('calculateMonthlyRealizedPnL', () => {
+  test('sums realized P&L per calendar month across multiple stocks, sorted newest first', () => {
+    const txs: Transaction[] = [
+      tx({ id: 1, stockId: stock.id, type: 'buy', quantity: 10, price: 100, date: '2026-01-01' }),
+      tx({ id: 2, stockId: stock.id, type: 'sell', quantity: 5, price: 150, date: '2026-02-10' }),
+      tx({ id: 3, stockId: stock2.id, type: 'buy', quantity: 20, price: 10, date: '2026-01-15' }),
+      tx({ id: 4, stockId: stock2.id, type: 'sell', quantity: 10, price: 8, date: '2026-02-20' }),
+      tx({ id: 5, stockId: stock2.id, type: 'sell', quantity: 5, price: 20, date: '2026-03-01' }),
+    ];
+    const monthly = calculateMonthlyRealizedPnL([stock, stock2], txs);
+    // 2026-02: THYAO sell 5*(150-100)=250, ASELS sell 10*(8-10)=-20 => total 230
+    // 2026-03: ASELS sell 5*(20-10)=50
+    expect(monthly).toEqual([
+      { month: '2026-03', realizedPnL: 50 },
+      { month: '2026-02', realizedPnL: 230 },
+    ]);
+  });
+
+  test('returns an empty array when there are no sell transactions', () => {
+    const txs = [tx({ type: 'buy' })];
+    expect(calculateMonthlyRealizedPnL([stock], txs)).toEqual([]);
   });
 });

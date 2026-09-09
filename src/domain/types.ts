@@ -37,3 +37,8 @@ export interface DailyPnL {
   date: string;
   realizedPnL: number;
 }
+
+export interface MonthlyPnL {
+  month: string; // YYYY-MM
+  realizedPnL: number;
+}
