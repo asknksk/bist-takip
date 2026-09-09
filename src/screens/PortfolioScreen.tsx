@@ -154,16 +154,27 @@ function PortfolioCard({ item, onDelete }: { item: PortfolioRow; onDelete: () =>
         </View>
       </View>
 
-      <View style={[styles.pnlPill, isProfit ? styles.pnlPillProfit : styles.pnlPillLoss]}>
-        <Ionicons
-          name={isProfit ? 'trending-up' : 'trending-down'}
-          size={16}
-          color={isProfit ? colors.profit : colors.loss}
-        />
-        <Text style={[styles.pnlText, { color: isProfit ? colors.profit : colors.loss }]}>
-          Gerçekleşen K/Z: {item.realizedPnL.toFixed(2)} TL
-        </Text>
-      </View>
+      {item.soldQuantity > 0 ? (
+        <>
+          <View style={[styles.pnlPill, isProfit ? styles.pnlPillProfit : styles.pnlPillLoss]}>
+            <Ionicons
+              name={isProfit ? 'trending-up' : 'trending-down'}
+              size={16}
+              color={isProfit ? colors.profit : colors.loss}
+            />
+            <Text style={[styles.pnlText, { color: isProfit ? colors.profit : colors.loss }]}>
+              Satılan {item.soldQuantity} adetten K/Z: {item.realizedPnL.toFixed(2)} TL
+            </Text>
+          </View>
+          {item.heldQuantity > 0 && (
+            <Text style={styles.pnlFootnote}>
+              Elindeki {item.heldQuantity} adet için güncel fiyat takip edilmiyor.
+            </Text>
+          )}
+        </>
+      ) : (
+        <Text style={styles.pnlFootnote}>Henüz satış yapılmadı — güncel fiyat takip edilmiyor.</Text>
+      )}
     </View>
   );
 }
@@ -253,6 +264,12 @@ const styles = StyleSheet.create({
   pnlPillProfit: { backgroundColor: 'rgba(34,197,94,0.12)' },
   pnlPillLoss: { backgroundColor: 'rgba(248,113,113,0.12)' },
   pnlText: { fontFamily: typography.fontSemiBold, fontSize: typography.label.fontSize },
+  pnlFootnote: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+    marginTop: spacing.xs,
+  },
   closedSection: { marginTop: spacing.sm },
   closedHeader: {
     flexDirection: 'row',
