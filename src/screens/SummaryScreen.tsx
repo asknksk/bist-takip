@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerChangeEvent } from '@react-native-community/datetimepicker';
 import { showAlert } from '../components/AppAlert';
 import StockDetailModal from '../components/StockDetailModal';
+import DateRangePickerModal from '../components/DateRangePickerModal';
 import { getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import {
@@ -53,8 +53,6 @@ function formatMonthLabel(monthIso: string): string {
   return `${MONTH_NAMES[month - 1]} ${year}`;
 }
 
-type EditingField = 'from' | 'to' | null;
-
 export default function SummaryScreen() {
   const insets = useSafeAreaInsets();
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -67,7 +65,7 @@ export default function SummaryScreen() {
 
   const [filterFrom, setFilterFrom] = useState<Date | null>(null);
   const [filterTo, setFilterTo] = useState<Date | null>(null);
-  const [editingField, setEditingField] = useState<EditingField>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
   const isFiltered = filterFrom !== null || filterTo !== null;
 
   const load = useCallback(() => {
@@ -134,10 +132,9 @@ export default function SummaryScreen() {
     [monthly]
   );
 
-  function handleFilterDateChange(event: DateTimePickerChangeEvent, selected: Date) {
-    if (Platform.OS === 'android') setEditingField(null);
-    if (editingField === 'from') setFilterFrom(selected);
-    else if (editingField === 'to') setFilterTo(selected);
+  function handleApplyFilter(from: Date | null, to: Date | null) {
+    setFilterFrom(from);
+    setFilterTo(to);
   }
 
   function clearFilter() {
@@ -166,47 +163,30 @@ export default function SummaryScreen() {
             </Pressable>
           )}
         </View>
-        <View style={styles.filterRow}>
-          <Pressable
-            style={styles.filterDateButton}
-            onPress={() => setEditingField('from')}
-            accessibilityRole="button"
-            accessibilityLabel="Başlangıç tarihi seç"
-          >
-            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-            <Text style={styles.filterDateText}>
-              {filterFrom ? formatShortDate(filterFrom) : 'Başlangıç'}
-            </Text>
-          </Pressable>
-          <Text style={styles.filterDash}>–</Text>
-          <Pressable
-            style={styles.filterDateButton}
-            onPress={() => setEditingField('to')}
-            accessibilityRole="button"
-            accessibilityLabel="Bitiş tarihi seç"
-          >
-            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-            <Text style={styles.filterDateText}>{filterTo ? formatShortDate(filterTo) : 'Bitiş'}</Text>
-          </Pressable>
-        </View>
-        {editingField && (
-          <View style={Platform.OS === 'ios' ? styles.iosPickerCard : undefined}>
-            <DateTimePicker
-              value={(editingField === 'from' ? filterFrom : filterTo) ?? new Date()}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              maximumDate={new Date()}
-              onValueChange={handleFilterDateChange}
-              onDismiss={() => setEditingField(null)}
-            />
-            {Platform.OS === 'ios' && (
-              <Pressable style={styles.iosPickerDoneButton} onPress={() => setEditingField(null)}>
-                <Text style={styles.iosPickerDoneText}>Tamam</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
+        <Pressable
+          style={styles.filterDateButton}
+          onPress={() => setPickerVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Tarih filtresini seç"
+        >
+          <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.filterDateText}>
+            {!isFiltered
+              ? 'Tüm zamanlar'
+              : filterFrom && filterTo && toIsoDate(filterFrom) !== toIsoDate(filterTo)
+                ? `${formatShortDate(filterFrom)} – ${formatShortDate(filterTo)}`
+                : formatShortDate(filterFrom ?? filterTo!)}
+          </Text>
+        </Pressable>
       </View>
+
+      <DateRangePickerModal
+        visible={pickerVisible}
+        initialFrom={filterFrom}
+        initialTo={filterTo}
+        onClose={() => setPickerVisible(false)}
+        onApply={handleApplyFilter}
+      />
 
       <View style={styles.heroCard}>
         <Text style={styles.totalLabel}>
@@ -382,9 +362,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontMedium,
     fontSize: typography.caption.fontSize,
   },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   filterDateButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -399,27 +377,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: typography.fontMedium,
     fontSize: typography.caption.fontSize,
-  },
-  filterDash: { color: colors.textMuted },
-  iosPickerCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginTop: spacing.sm,
-    overflow: 'hidden',
-  },
-  iosPickerDoneButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: touchTarget.minSize,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  iosPickerDoneText: {
-    color: colors.primary,
-    fontFamily: typography.fontSemiBold,
-    fontSize: typography.body.fontSize,
   },
   heroCard: {
     backgroundColor: colors.surface,
