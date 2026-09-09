@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import StockPicker from '../components/StockPicker';
 import { getAllStocks } from '../db/stocksRepo';
 import { addTransaction, getAllTransactions } from '../db/transactionsRepo';
@@ -21,8 +22,15 @@ import { calculatePortfolioRow, validateSellQuantity } from '../domain/calculati
 import { Stock, TransactionType } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+function toIsoDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(d: Date): string {
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
 export default function AddTransactionScreen() {
@@ -32,8 +40,17 @@ export default function AddTransactionScreen() {
   const [type, setType] = useState<TransactionType>('buy');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
-  const [date, setDate] = useState(todayIso());
+  const [dateObj, setDateObj] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  function handleDateChange(event: DateTimePickerEvent, selected?: Date) {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (event.type === 'dismissed') return;
+    if (selected) setDateObj(selected);
+  }
 
   const reloadStocks = useCallback(() => {
     getAllStocks()
@@ -66,11 +83,7 @@ export default function AddTransactionScreen() {
       return;
     }
 
-    const dateFormatRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateFormatRegex.test(date)) {
-      Alert.alert('Hata', 'Tarih YYYY-AA-GG formatında olmalı (örn. 2026-09-09).');
-      return;
-    }
+    const date = toIsoDate(dateObj);
 
     setSubmitting(true);
     try {
@@ -170,13 +183,32 @@ export default function AddTransactionScreen() {
           onChangeText={setPrice}
         />
 
-        <Text style={styles.label}>Tarih (YYYY-AA-GG)</Text>
-        <TextInput
-          style={styles.input}
-          value={date}
-          onChangeText={setDate}
-          placeholderTextColor={colors.textMuted}
-        />
+        <Text style={styles.label}>Tarih</Text>
+        <Pressable
+          style={styles.dateInput}
+          onPress={() => setShowDatePicker(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Tarih seç"
+        >
+          <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
+          <Text style={styles.dateInputText}>{formatDisplayDate(dateObj)}</Text>
+        </Pressable>
+        {showDatePicker && (
+          <View style={Platform.OS === 'ios' ? styles.iosPickerCard : undefined}>
+            <DateTimePicker
+              value={dateObj}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              maximumDate={new Date()}
+              onChange={handleDateChange}
+            />
+            {Platform.OS === 'ios' && (
+              <Pressable style={styles.iosPickerDoneButton} onPress={() => setShowDatePicker(false)}>
+                <Text style={styles.iosPickerDoneText}>Tamam</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
 
         <Pressable
           style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
@@ -215,6 +247,42 @@ const styles = StyleSheet.create({
     minHeight: touchTarget.minSize,
     color: colors.textPrimary,
     fontFamily: typography.fontRegular,
+    fontSize: typography.body.fontSize,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: touchTarget.minSize,
+  },
+  dateInputText: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.body.fontSize,
+  },
+  iosPickerCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.sm,
+    overflow: 'hidden',
+  },
+  iosPickerDoneButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: touchTarget.minSize,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  iosPickerDoneText: {
+    color: colors.primary,
+    fontFamily: typography.fontSemiBold,
     fontSize: typography.body.fontSize,
   },
   typeRow: { flexDirection: 'row', gap: spacing.sm },
