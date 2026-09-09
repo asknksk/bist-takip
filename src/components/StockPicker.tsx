@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { addCustomStock, deleteStock } from '../db/stocksRepo';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { addCustomStock, deleteStock, getAllStocks } from '../db/stocksRepo';
 import { Stock } from '../domain/types';
+import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
 
 interface StockPickerProps {
   stocks: Stock[];
@@ -11,6 +14,7 @@ interface StockPickerProps {
 }
 
 export default function StockPicker({ stocks, selectedStockId, onSelect, onStocksChanged }: StockPickerProps) {
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [newStockName, setNewStockName] = useState('');
@@ -25,6 +29,12 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
     );
   }, [stocks, query]);
 
+  function closeModal() {
+    setOpen(false);
+    setQuery('');
+    setNewStockName('');
+  }
+
   async function handleAddCustomStock() {
     const symbol = query.trim().toUpperCase();
     if (!symbol) return;
@@ -34,9 +44,13 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
     }
     try {
       await addCustomStock(symbol, newStockName.trim());
+      const updated = await getAllStocks();
       onStocksChanged();
-      setQuery('');
-      setNewStockName('');
+      const added = updated.find((s) => s.symbol === symbol);
+      if (added) {
+        onSelect(added.id);
+      }
+      closeModal();
     } catch (error) {
       Alert.alert('Hata', 'Bu hisse zaten ekli olabilir.');
     }
@@ -64,20 +78,30 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
 
   return (
     <View>
-      <Pressable style={styles.trigger} onPress={() => setOpen(true)}>
-        <Text>
-          {selectedStock ? `${selectedStock.symbol} - ${selectedStock.name}` : 'Hisse seç'}
+      <Pressable
+        style={styles.trigger}
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Hisse seç"
+      >
+        <Text style={selectedStock ? styles.triggerTextFilled : styles.triggerTextPlaceholder}>
+          {selectedStock ? `${selectedStock.symbol} · ${selectedStock.name}` : 'Hisse seç'}
         </Text>
+        <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
       </Pressable>
-      <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
-        <View style={styles.modalContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Hisse kodu veya adı ara"
-            value={query}
-            onChangeText={setQuery}
-            autoFocus
-          />
+      <Modal visible={open} animationType="slide" onRequestClose={closeModal}>
+        <View style={[styles.modalContainer, { paddingTop: insets.top + spacing.md }]}>
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Hisse kodu veya adı ara"
+              placeholderTextColor={colors.textMuted}
+              value={query}
+              onChangeText={setQuery}
+              autoFocus
+            />
+          </View>
           <FlatList
             data={filtered}
             keyExtractor={(item) => String(item.id)}
@@ -86,34 +110,53 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
                 style={styles.row}
                 onPress={() => {
                   onSelect(item.id);
-                  setQuery('');
-                  setOpen(false);
+                  closeModal();
                 }}
                 onLongPress={() => handleLongPressRow(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.symbol} ${item.name}`}
               >
-                <Text style={styles.rowSymbol}>{item.symbol}</Text>
-                <Text>{item.name}</Text>
+                <View style={styles.rowSymbolBadge}>
+                  <Text style={styles.rowSymbolBadgeText}>{item.symbol.slice(0, 2)}</Text>
+                </View>
+                <View style={styles.rowTextGroup}>
+                  <Text style={styles.rowSymbol}>{item.symbol}</Text>
+                  <Text style={styles.rowName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                </View>
               </Pressable>
             )}
             ListEmptyComponent={
               query.trim() ? (
                 <View style={styles.addCustomBox}>
-                  <Text>"{query.trim().toUpperCase()}" bulunamadı. Yeni hisse olarak eklemek ister misin?</Text>
+                  <Text style={styles.addCustomText}>
+                    "{query.trim().toUpperCase()}" bulunamadı. Yeni hisse olarak eklemek ister misin?
+                  </Text>
                   <TextInput
-                    style={styles.searchInput}
+                    style={styles.searchInputStandalone}
                     placeholder="Hisse adı (örn. Şirket A.Ş.)"
+                    placeholderTextColor={colors.textMuted}
                     value={newStockName}
                     onChangeText={setNewStockName}
                   />
-                  <Pressable style={styles.addButton} onPress={handleAddCustomStock}>
+                  <Pressable
+                    style={styles.addButton}
+                    onPress={handleAddCustomStock}
+                    accessibilityRole="button"
+                  >
                     <Text style={styles.addButtonText}>Ekle</Text>
                   </Pressable>
                 </View>
               ) : null
             }
           />
-          <Pressable style={styles.closeButton} onPress={() => setOpen(false)}>
-            <Text>Kapat</Text>
+          <Pressable
+            style={[styles.closeButton, { marginBottom: insets.bottom }]}
+            onPress={closeModal}
+            accessibilityRole="button"
+          >
+            <Text style={styles.closeButtonText}>Kapat</Text>
           </Pressable>
         </View>
       </Modal>
@@ -122,13 +165,123 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
 }
 
 const styles = StyleSheet.create({
-  trigger: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12 },
-  modalContainer: { flex: 1, paddingTop: 60, paddingHorizontal: 16 },
-  searchInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, marginBottom: 12 },
-  row: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  rowSymbol: { fontWeight: 'bold' },
-  closeButton: { padding: 12, alignItems: 'center' },
-  addCustomBox: { marginTop: 12 },
-  addButton: { backgroundColor: '#3b82f6', padding: 12, borderRadius: 8, alignItems: 'center' },
-  addButtonText: { color: 'white', fontWeight: 'bold' },
+  trigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: touchTarget.minSize,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  triggerTextFilled: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.body.fontSize,
+    flexShrink: 1,
+  },
+  triggerTextPlaceholder: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.body.fontSize,
+  },
+  modalContainer: { flex: 1, paddingHorizontal: spacing.md, backgroundColor: colors.background },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  searchIcon: { marginRight: spacing.xs },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    minHeight: touchTarget.minSize,
+    color: colors.textPrimary,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.body.fontSize,
+  },
+  searchInputStandalone: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    minHeight: touchTarget.minSize,
+    color: colors.textPrimary,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.body.fontSize,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: touchTarget.minSize,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  rowSymbolBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowSymbolBadgeText: {
+    color: colors.primary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.caption.fontSize,
+  },
+  rowTextGroup: { flex: 1 },
+  rowSymbol: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.body.fontSize,
+  },
+  rowName: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.label.fontSize,
+  },
+  closeButton: {
+    minHeight: touchTarget.minSize,
+    padding: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    color: colors.primary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.body.fontSize,
+  },
+  addCustomBox: { marginTop: spacing.md },
+  addCustomText: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.body.fontSize,
+    marginBottom: spacing.md,
+  },
+  addButton: {
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    minHeight: touchTarget.minSize,
+    justifyContent: 'center',
+  },
+  addButtonText: {
+    color: colors.onPrimary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.body.fontSize,
+  },
 });
