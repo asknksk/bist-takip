@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../components/AppAlert';
@@ -21,29 +21,30 @@ export default function PortfolioScreen() {
   const [showClosed, setShowClosed] = useState(false);
   const [prices, setPrices] = useState<PriceMap>(new Map());
   const [pricesLoading, setPricesLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(() => {
-    Promise.all([getAllStocks(), getAllTransactions()])
-      .then(([stocks, txs]) => {
-        const portfolio = calculatePortfolio(stocks, txs);
-        setRows(portfolio);
-        setLoading(false);
+  const load = useCallback(async () => {
+    try {
+      const [stocks, txs] = await Promise.all([getAllStocks(), getAllTransactions()]);
+      const portfolio = calculatePortfolio(stocks, txs);
+      setRows(portfolio);
+      setLoading(false);
 
-        const openSymbols = portfolio.filter((r) => r.heldQuantity > 0).map((r) => r.symbol);
-        if (openSymbols.length > 0) {
-          setPrices(new Map());
-          setPricesLoading(true);
-          fetchCurrentPrices(openSymbols)
-            .then(setPrices)
-            .finally(() => setPricesLoading(false));
-        } else {
-          setPrices(new Map());
-        }
-      })
-      .catch(() => {
-        showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
-        setLoading(false);
-      });
+      // Pull-to-refresh (and every focus) only re-fetches prices for stocks
+      // currently held — closed positions have no "current price" to show.
+      const openSymbols = portfolio.filter((r) => r.heldQuantity > 0).map((r) => r.symbol);
+      if (openSymbols.length > 0) {
+        setPricesLoading(true);
+        const priceMap = await fetchCurrentPrices(openSymbols);
+        setPrices(priceMap);
+        setPricesLoading(false);
+      } else {
+        setPrices(new Map());
+      }
+    } catch (error) {
+      showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+      setLoading(false);
+    }
   }, []);
 
   useFocusEffect(
@@ -51,6 +52,12 @@ export default function PortfolioScreen() {
       load();
     }, [load])
   );
+
+  async function handlePullToRefresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
 
   const { openRows, closedRows } = useMemo(() => {
     const open = rows.filter((r) => r.heldQuantity > 0);
@@ -106,7 +113,17 @@ export default function PortfolioScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.lg }]}>
+    <ScrollView
+      contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.lg }]}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handlePullToRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
+    >
       {openRows.length > 0 && (
         <Text style={styles.priceDisclaimer}>
           Güncel fiyatlar ücretsiz, gecikmeli bir kaynaktan alınır ve tahminidir — resmi/anlık veri
