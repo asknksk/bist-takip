@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../components/AppAlert';
 import QuickSellModal from '../components/QuickSellModal';
+import StockDetailModal from '../components/StockDetailModal';
 import { forceDeleteStock, getAllStocks, resetAllData } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import { calculatePortfolio } from '../domain/calculations';
@@ -31,6 +32,7 @@ export default function PortfolioScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sellItem, setSellItem] = useState<PortfolioRow | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [detailStockId, setDetailStockId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -222,6 +224,7 @@ export default function PortfolioScreen() {
           key={item.stockId}
           item={item}
           currentPrice={priceStateFor(item.symbol)}
+          onPress={() => setDetailStockId(item.stockId)}
           onDelete={() => handleDeleteStock(item)}
           onSell={() => setSellItem(item)}
         />
@@ -254,6 +257,7 @@ export default function PortfolioScreen() {
                 key={item.stockId}
                 item={item}
                 currentPrice={undefined}
+                onPress={() => setDetailStockId(item.stockId)}
                 onDelete={() => handleDeleteStock(item)}
               />
             ))}
@@ -266,6 +270,13 @@ export default function PortfolioScreen() {
         onClose={() => setSellItem(null)}
         onSold={load}
       />
+
+      <StockDetailModal
+        visible={detailStockId !== null}
+        stockId={detailStockId}
+        onClose={() => setDetailStockId(null)}
+        onChanged={load}
+      />
     </ScrollView>
   );
 }
@@ -273,11 +284,13 @@ export default function PortfolioScreen() {
 function PortfolioCard({
   item,
   currentPrice,
+  onPress,
   onDelete,
   onSell,
 }: {
   item: PortfolioRow;
   currentPrice: number | null | undefined;
+  onPress: () => void;
   onDelete: () => void;
   onSell?: () => void;
 }) {
@@ -289,7 +302,7 @@ function PortfolioCard({
   const isUnrealizedProfit = (unrealizedPnL ?? 0) >= 0;
 
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
       <View style={styles.cardHeader}>
         <View style={styles.symbolBadge}>
           <Text style={styles.symbolBadgeText}>{item.symbol.slice(0, 2)}</Text>
@@ -362,7 +375,12 @@ function PortfolioCard({
         </View>
       )}
 
-      {item.soldQuantity > 0 ? (
+      {/* Realized P&L only makes sense as a headline number once the position
+          is fully closed — while shares are still held, it's leftover profit
+          from an earlier, unrelated round trip and reads as contradicting
+          the live unrealized figure above. It's still visible in the
+          transaction detail modal (tap the card) for open positions. */}
+      {item.heldQuantity === 0 && item.soldQuantity > 0 && (
         <View
           style={[
             styles.pnlPill,
@@ -381,12 +399,11 @@ function PortfolioCard({
             Satılan {item.soldQuantity} adetten gerçekleşen K/Z: {formatCurrency(item.realizedPnL)} TL
           </Text>
         </View>
-      ) : (
-        item.heldQuantity > 0 && (
-          <Text style={styles.pnlFootnote}>Henüz satış yapılmadı.</Text>
-        )
       )}
-    </View>
+      {item.heldQuantity > 0 && item.soldQuantity === 0 && (
+        <Text style={styles.pnlFootnote}>Henüz satış yapılmadı.</Text>
+      )}
+    </Pressable>
   );
 }
 
