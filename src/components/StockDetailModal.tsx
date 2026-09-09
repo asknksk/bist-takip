@@ -9,7 +9,7 @@ import { calculatePortfolioRow, calculateSellPnLs } from '../domain/calculations
 import { PortfolioRow, Stock, Transaction } from '../domain/types';
 import { fetchCurrentPrice } from '../services/priceService';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatPercent } from '../utils/format';
 
 interface StockDetailModalProps {
   visible: boolean;
@@ -86,6 +86,8 @@ export default function StockDetailModal({
     row && row.heldQuantity > 0 && typeof currentPrice === 'number'
       ? row.heldQuantity * (currentPrice - row.avgBuyPrice)
       : null;
+  const costBasis = row ? row.heldQuantity * row.avgBuyPrice : 0;
+  const unrealizedPct = unrealizedPnL !== null && costBasis > 0 ? unrealizedPnL / costBasis : null;
 
   const displayedTransactions = useMemo(() => {
     if (!dateRange) return transactions;
@@ -147,7 +149,9 @@ export default function StockDetailModal({
                     {unrealizedPnL !== null && (
                       <SummaryItem
                         label="Tahmini K/Z"
-                        value={`${formatCurrency(unrealizedPnL)} TL`}
+                        value={`${formatCurrency(unrealizedPnL)} TL${
+                          unrealizedPct !== null ? ` (${formatPercent(unrealizedPct)})` : ''
+                        }`}
                         color={unrealizedPnL >= 0 ? colors.profit : colors.loss}
                       />
                     )}

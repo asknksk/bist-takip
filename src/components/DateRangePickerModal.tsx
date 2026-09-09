@@ -1,8 +1,28 @@
 import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Calendar, DateData } from 'react-native-calendars';
+import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
+
+// Turkish locale: month/day names in Turkish, and the week starts on
+// Monday (Pazartesi) — react-native-calendars defaults to Sunday-first
+// with no locale configured, which looked wrong for a Turkish user.
+LocaleConfig.locales.tr = {
+  monthNames: [
+    'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+  ],
+  monthNamesShort: [
+    'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz',
+    'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara',
+  ],
+  dayNames: [
+    'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi',
+  ],
+  dayNamesShort: ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'],
+  today: 'Bugün',
+};
+LocaleConfig.defaultLocale = 'tr';
 
 function toIsoDate(d: Date): string {
   const year = d.getFullYear();
@@ -113,6 +133,7 @@ export default function DateRangePickerModal({
             markedDates={markedDates}
             onDayPress={handleDayPress}
             maxDate={toIsoDate(new Date())}
+            firstDay={1}
             theme={calendarTheme}
             style={styles.calendar}
           />

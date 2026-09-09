@@ -12,7 +12,7 @@ import { calculatePortfolio } from '../domain/calculations';
 import { PortfolioRow } from '../domain/types';
 import { fetchCurrentPrices } from '../services/priceService';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatPercent } from '../utils/format';
 
 // undefined = still fetching, null = fetch failed, number = last fetched price
 type PriceMap = Map<string, number | null>;
@@ -77,19 +77,24 @@ export default function PortfolioScreen() {
     return { openRows: open, closedRows: closed };
   }, [rows]);
 
-  const { totalValue, missingPriceCount } = useMemo(() => {
+  const { totalValue, totalCost, missingPriceCount } = useMemo(() => {
     let total = 0;
+    let cost = 0;
     let missing = 0;
     for (const r of openRows) {
       const price = prices.get(r.symbol);
       if (typeof price === 'number') {
         total += r.heldQuantity * price;
+        cost += r.heldQuantity * r.avgBuyPrice;
       } else {
         missing += 1;
       }
     }
-    return { totalValue: total, missingPriceCount: missing };
+    return { totalValue: total, totalCost: cost, missingPriceCount: missing };
   }, [openRows, prices]);
+
+  const totalUnrealizedPnL = totalValue - totalCost;
+  const totalUnrealizedPct = totalCost > 0 ? totalUnrealizedPnL / totalCost : 0;
 
   function handleDeleteAllData() {
     showAlert(
@@ -211,6 +216,16 @@ export default function PortfolioScreen() {
             )}
           </View>
           <Text style={styles.totalValue}>{formatCurrency(totalValue)} TL</Text>
+          {totalCost > 0 && (
+            <Text
+              style={[
+                styles.totalPnlText,
+                { color: totalUnrealizedPnL >= 0 ? colors.profit : colors.loss },
+              ]}
+            >
+              Tahmini K/Z: {formatCurrency(totalUnrealizedPnL)} TL ({formatPercent(totalUnrealizedPct)})
+            </Text>
+          )}
           {missingPriceCount > 0 && (
             <Text style={styles.totalHint}>
               {missingPriceCount} hisse için fiyat alınamadı, toplama dahil edilmedi.
@@ -300,6 +315,8 @@ function PortfolioCard({
       ? item.heldQuantity * (currentPrice - item.avgBuyPrice)
       : null;
   const isUnrealizedProfit = (unrealizedPnL ?? 0) >= 0;
+  const costBasis = item.heldQuantity * item.avgBuyPrice;
+  const unrealizedPct = unrealizedPnL !== null && costBasis > 0 ? unrealizedPnL / costBasis : null;
 
   return (
     <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
@@ -371,6 +388,7 @@ function PortfolioCard({
             style={[styles.pnlText, { color: isUnrealizedProfit ? colors.profit : colors.loss }]}
           >
             Tahmini K/Z: {formatCurrency(unrealizedPnL)} TL
+            {unrealizedPct !== null ? ` (${formatPercent(unrealizedPct)})` : ''}
           </Text>
         </View>
       )}
@@ -463,6 +481,11 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: typography.fontBold,
     fontSize: typography.display.fontSize,
+  },
+  totalPnlText: {
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.label.fontSize,
+    marginTop: spacing.xs,
   },
   totalHint: {
     color: colors.textMuted,

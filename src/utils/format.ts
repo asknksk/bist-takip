@@ -10,3 +10,16 @@ export function formatCurrency(n: number, fractionDigits: number = 2): string {
     maximumFractionDigits: fractionDigits,
   }).format(n);
 }
+
+/**
+ * Formats a ratio (e.g. P&L / cost basis) as a Turkish-style percentage:
+ * the sign comes before the "%", not after the number (e.g. "-%2,73").
+ */
+export function formatPercent(ratio: number, fractionDigits: number = 2): string {
+  const sign = ratio < 0 ? '-' : '';
+  const magnitude = new Intl.NumberFormat('tr-TR', {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(Math.abs(ratio) * 100);
+  return `${sign}%${magnitude}`;
+}
