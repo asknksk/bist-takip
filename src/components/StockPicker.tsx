@@ -32,10 +32,14 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
       Alert.alert('Hata', 'Lütfen hissenin adını da gir.');
       return;
     }
-    await addCustomStock(symbol, newStockName.trim());
-    onStocksChanged();
-    setQuery('');
-    setNewStockName('');
+    try {
+      await addCustomStock(symbol, newStockName.trim());
+      onStocksChanged();
+      setQuery('');
+      setNewStockName('');
+    } catch (error) {
+      Alert.alert('Hata', 'Bu hisse zaten ekli olabilir.');
+    }
   }
 
   function handleLongPressRow(item: Stock) {
@@ -46,8 +50,12 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
         text: 'Sil',
         style: 'destructive',
         onPress: async () => {
-          await deleteStock(item.id);
-          onStocksChanged();
+          try {
+            await deleteStock(item.id);
+            onStocksChanged();
+          } catch (error) {
+            Alert.alert('Hata', 'Hisse silinemedi.');
+          }
         },
       },
     ]);
