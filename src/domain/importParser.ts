@@ -11,10 +11,19 @@ export interface ImportParseResult {
   skippedCount: number;
 }
 
-const ORDER_TYPE_COL = 3;
-const DATE_COL = 1;
-const DESCRIPTION_COL = 8;
-const AMOUNT_COL = 13;
+const HEADER_LABELS = {
+  date: 'Tarih',
+  orderType: 'İşlem tipi',
+  description: 'Açıklama',
+  amount: 'İşlem Tutarı',
+} as const;
+
+interface ColumnIndexes {
+  date: number;
+  orderType: number;
+  description: number;
+  amount: number;
+}
 
 const DESCRIPTION_REGEX = /^(\S+)\s+.*?,\s*([\d.,]+)\s*adet\s*$/i;
 
@@ -36,6 +45,27 @@ function parseTurkishAmount(raw: string): number {
 }
 
 /**
+ * Locates the header row (containing the "Tarih"/"İşlem tipi"/"Açıklama"/
+ * "İşlem Tutarı" labels) and returns each column's index. The exported
+ * sheet has a variable number of leading blank columns depending on how
+ * it was downloaded/re-saved, so columns are found by label, not by a
+ * fixed position.
+ */
+function findColumnIndexes(rows: unknown[][]): ColumnIndexes | null {
+  for (const row of rows) {
+    const cells = row.map((cell) => String(cell ?? '').trim());
+    const dateIdx = cells.indexOf(HEADER_LABELS.date);
+    const orderTypeIdx = cells.indexOf(HEADER_LABELS.orderType);
+    const descriptionIdx = cells.indexOf(HEADER_LABELS.description);
+    const amountIdx = cells.indexOf(HEADER_LABELS.amount);
+    if (dateIdx !== -1 && orderTypeIdx !== -1 && descriptionIdx !== -1 && amountIdx !== -1) {
+      return { date: dateIdx, orderType: orderTypeIdx, description: descriptionIdx, amount: amountIdx };
+    }
+  }
+  return null;
+}
+
+/**
  * Parses an Enpara.com "Yatırım Hesap Hareketleri" export (read as a 2D
  * array of cell values, e.g. via SheetJS `sheet_to_json(sheet, { header: 1 })`).
  * Only "Hisse alış"/"Hisse satış" rows become transactions; everything else
@@ -45,18 +75,23 @@ export function parseEnparaSheet(rows: unknown[][]): ImportParseResult {
   const transactions: ParsedImportTransaction[] = [];
   let skippedCount = 0;
 
+  const columns = findColumnIndexes(rows);
+  if (!columns) {
+    return { transactions: [], skippedCount: 0 };
+  }
+
   for (const row of rows) {
-    const dateIso = parseTurkishDate(String(row[DATE_COL] ?? ''));
+    const dateIso = parseTurkishDate(String(row[columns.date] ?? ''));
     if (!dateIso) continue; // not a data row (header/footer/blank line)
 
-    const orderType = String(row[ORDER_TYPE_COL] ?? '').trim();
+    const orderType = String(row[columns.orderType] ?? '').trim();
     if (orderType !== 'Hisse alış' && orderType !== 'Hisse satış') {
       skippedCount += 1;
       continue;
     }
 
-    const description = String(row[DESCRIPTION_COL] ?? '');
-    const amountRaw = String(row[AMOUNT_COL] ?? '');
+    const description = String(row[columns.description] ?? '');
+    const amountRaw = String(row[columns.amount] ?? '');
     const match = DESCRIPTION_REGEX.exec(description);
 
     if (!match) {

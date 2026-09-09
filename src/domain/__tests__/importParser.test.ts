@@ -75,4 +75,36 @@ describe('parseEnparaSheet', () => {
   test('returns empty result for an empty sheet', () => {
     expect(parseEnparaSheet([])).toEqual({ transactions: [], skippedCount: 0 });
   });
+
+  test('locates columns by header label even without a leading blank column', () => {
+    // Some re-saved/re-downloaded exports omit the leading blank column A
+    // entirely, shifting every column index left by one.
+    const shiftedHeader: unknown[][] = [
+      ['Enpara.com Yatırım Hesap Hareketleri', null, null, null, null, null, null, null, null, null, null, null, null],
+      ['Tarih', null, 'İşlem tipi', null, null, null, null, 'Açıklama', null, null, null, 'İşlem Tutarı'],
+    ];
+    const shiftedRow = [
+      '09.09.2026',
+      null,
+      'Hisse alış',
+      null,
+      null,
+      null,
+      null,
+      'EREGL limit alış emri, 1030 adet',
+      null,
+      null,
+      null,
+      '-41.138,20 TL',
+    ];
+    const result = parseEnparaSheet([...shiftedHeader, shiftedRow]);
+    expect(result.transactions).toEqual([
+      { date: '2026-09-09', type: 'buy', symbol: 'EREGL', quantity: 1030, price: 41138.2 / 1030 },
+    ]);
+  });
+
+  test('returns no transactions and no false skips when the header row cannot be found', () => {
+    const rows = [['this', 'is', 'not', 'a', 'recognizable', 'enpara', 'export']];
+    expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0 });
+  });
 });

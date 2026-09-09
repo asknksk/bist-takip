@@ -61,6 +61,16 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
 
       const { transactions, skippedCount: skipped } = parseEnparaSheet(rows);
       if (transactions.length === 0) {
+        console.error(
+          '[ImportExcelModal] parsed 0 transactions. sheetNames=',
+          workbook.SheetNames,
+          'rowCount=',
+          rows.length,
+          'skipped=',
+          skipped,
+          'first 10 rows=',
+          JSON.stringify(rows.slice(0, 10))
+        );
         showAlert('Hata', 'Dosyada içe aktarılacak hisse alım/satım işlemi bulunamadı.');
         return;
       }
