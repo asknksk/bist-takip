@@ -54,7 +54,8 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
             await deleteStock(item.id);
             onStocksChanged();
           } catch (error) {
-            Alert.alert('Hata', 'Hisse silinemedi.');
+            const message = error instanceof Error ? error.message : 'Hisse silinemedi.';
+            Alert.alert('Hata', message);
           }
         },
       },

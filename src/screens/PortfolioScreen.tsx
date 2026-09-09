@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import { calculatePortfolio } from '../domain/calculations';
@@ -12,9 +12,13 @@ export default function PortfolioScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      Promise.all([getAllStocks(), getAllTransactions()]).then(([stocks, txs]) => {
-        if (!cancelled) setRows(calculatePortfolio(stocks, txs));
-      });
+      Promise.all([getAllStocks(), getAllTransactions()])
+        .then(([stocks, txs]) => {
+          if (!cancelled) setRows(calculatePortfolio(stocks, txs));
+        })
+        .catch(() => {
+          if (!cancelled) Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+        });
       return () => {
         cancelled = true;
       };

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, ScrollView, StyleSheet, Text } from 'react-native';
 import { BarChart, LineChart } from 'react-native-chart-kit';
 import { getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
@@ -20,11 +20,15 @@ export default function SummaryScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      Promise.all([getAllStocks(), getAllTransactions()]).then(([stocks, txs]) => {
-        if (cancelled) return;
-        setRows(calculatePortfolio(stocks, txs));
-        setPoints(calculateCumulativePnLOverTime(stocks, txs));
-      });
+      Promise.all([getAllStocks(), getAllTransactions()])
+        .then(([stocks, txs]) => {
+          if (cancelled) return;
+          setRows(calculatePortfolio(stocks, txs));
+          setPoints(calculateCumulativePnLOverTime(stocks, txs));
+        })
+        .catch(() => {
+          if (!cancelled) Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+        });
       return () => {
         cancelled = true;
       };

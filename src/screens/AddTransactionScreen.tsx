@@ -20,7 +20,11 @@ export default function AddTransactionScreen() {
   const [date, setDate] = useState(todayIso());
 
   const reloadStocks = useCallback(() => {
-    getAllStocks().then(setStocks);
+    getAllStocks()
+      .then(setStocks)
+      .catch(() => {
+        Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+      });
   }, []);
 
   useFocusEffect(
@@ -30,8 +34,8 @@ export default function AddTransactionScreen() {
   );
 
   async function handleSubmit() {
-    const quantityNum = Number(quantity);
-    const priceNum = Number(price);
+    const quantityNum = Number(quantity.replace(',', '.'));
+    const priceNum = Number(price.replace(',', '.'));
 
     if (!stockId) {
       Alert.alert('Hata', 'Lütfen bir hisse seç.');
@@ -53,24 +57,28 @@ export default function AddTransactionScreen() {
       return;
     }
 
-    if (type === 'sell') {
-      const stock = stocks.find((s) => s.id === stockId);
-      if (!stock) {
-        Alert.alert('Hata', 'Seçili hisse artık mevcut değil. Lütfen tekrar seç.');
-        return;
+    try {
+      if (type === 'sell') {
+        const stock = stocks.find((s) => s.id === stockId);
+        if (!stock) {
+          Alert.alert('Hata', 'Seçili hisse artık mevcut değil. Lütfen tekrar seç.');
+          return;
+        }
+        const allTxs = await getAllTransactions();
+        const row = calculatePortfolioRow(stock, allTxs);
+        if (!validateSellQuantity(row.heldQuantity, quantityNum)) {
+          Alert.alert('Hata', `Elinde bu hisseden yalnızca ${row.heldQuantity} adet var.`);
+          return;
+        }
       }
-      const allTxs = await getAllTransactions();
-      const row = calculatePortfolioRow(stock, allTxs);
-      if (!validateSellQuantity(row.heldQuantity, quantityNum)) {
-        Alert.alert('Hata', `Elinde bu hisseden yalnızca ${row.heldQuantity} adet var.`);
-        return;
-      }
-    }
 
-    await addTransaction(stockId, type, quantityNum, priceNum, date);
-    Alert.alert('Kaydedildi', 'İşlem başarıyla eklendi.');
-    setQuantity('');
-    setPrice('');
+      await addTransaction(stockId, type, quantityNum, priceNum, date);
+      Alert.alert('Kaydedildi', 'İşlem başarıyla eklendi.');
+      setQuantity('');
+      setPrice('');
+    } catch (error) {
+      Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+    }
   }
 
   return (

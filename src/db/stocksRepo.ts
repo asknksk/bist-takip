@@ -1,19 +1,9 @@
 import { getDatabase } from './database';
 import { Stock } from '../domain/types';
-import { BIST_STOCKS } from '../data/bistStocks';
 
-export async function seedStocksIfEmpty(): Promise<void> {
-  const db = await getDatabase();
-  const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM stocks');
-  if (row && row.count > 0) return;
-  for (const s of BIST_STOCKS) {
-    await db.runAsync(
-      'INSERT OR IGNORE INTO stocks (symbol, name, is_custom) VALUES (?, ?, 0)',
-      s.symbol,
-      s.name
-    );
-  }
-}
+// Seeding of the initial BIST stock list now happens automatically inside
+// getDatabase() in ./database.ts (to avoid a circular import between this
+// file and database.ts). No screen needs to call a seeding function.
 
 export async function getAllStocks(): Promise<Stock[]> {
   const db = await getDatabase();
@@ -34,5 +24,12 @@ export async function addCustomStock(symbol: string, name: string): Promise<void
 
 export async function deleteStock(id: number): Promise<void> {
   const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM transactions WHERE stock_id = ?',
+    id
+  );
+  if (row && row.count > 0) {
+    throw new Error('Bu hissede kayıtlı işlemler var, önce onları silin.');
+  }
   await db.runAsync('DELETE FROM stocks WHERE id = ?', id);
 }

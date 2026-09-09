@@ -10,10 +10,14 @@ export default function HistoryScreen() {
   const [stocksById, setStocksById] = useState<Record<number, Stock>>({});
 
   const load = useCallback(() => {
-    Promise.all([getAllStocks(), getAllTransactions()]).then(([stocks, txs]) => {
-      setStocksById(Object.fromEntries(stocks.map((s) => [s.id, s])));
-      setTransactions(txs);
-    });
+    Promise.all([getAllStocks(), getAllTransactions()])
+      .then(([stocks, txs]) => {
+        setStocksById(Object.fromEntries(stocks.map((s) => [s.id, s])));
+        setTransactions(txs);
+      })
+      .catch(() => {
+        Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+      });
   }, []);
 
   useFocusEffect(
@@ -29,8 +33,12 @@ export default function HistoryScreen() {
         text: 'Sil',
         style: 'destructive',
         onPress: async () => {
-          await deleteTransaction(id);
-          load();
+          try {
+            await deleteTransaction(id);
+            load();
+          } catch (error) {
+            Alert.alert('Hata', 'İşlem silinemedi. Lütfen tekrar deneyin.');
+          }
         },
       },
     ]);
