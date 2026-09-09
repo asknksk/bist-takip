@@ -64,6 +64,19 @@ describe('parseEnparaSheet', () => {
     const result = parseEnparaSheet(rows);
     expect(result.transactions).toEqual([]);
     expect(result.skippedCount).toBe(3);
+    expect(result.skippedRows).toHaveLength(3);
+    expect(result.skippedRows.map((r) => r.reason)).toEqual([
+      'Hisse alım/satım işlemi değil',
+      'Hisse alım/satım işlemi değil',
+      'Hisse alım/satım işlemi değil',
+    ]);
+    expect(result.skippedRows[0]).toEqual({
+      date: '16.06.2026',
+      orderType: 'Vergi kesintisi',
+      description: 'Yatırım işlemleri kaynaklı vergi kesintisi',
+      amount: '-47,46 TL',
+      reason: 'Hisse alım/satım işlemi değil',
+    });
   });
 
   test('sorts parsed transactions chronologically regardless of input order', () => {
@@ -97,10 +110,11 @@ describe('parseEnparaSheet', () => {
     const result = parseEnparaSheet(rows);
     expect(result.transactions).toEqual([]);
     expect(result.skippedCount).toBe(1);
+    expect(result.skippedRows[0].reason).toBe('Açıklama satırı okunamadı');
   });
 
   test('returns empty result for an empty sheet', () => {
-    expect(parseEnparaSheet([])).toEqual({ transactions: [], skippedCount: 0 });
+    expect(parseEnparaSheet([])).toEqual({ transactions: [], skippedCount: 0, skippedRows: [] });
   });
 
   test('locates columns by header label even without a leading blank column', () => {
@@ -143,7 +157,7 @@ describe('parseEnparaSheet', () => {
     ];
     // No HEADER_ROWS prepended, and no header row present either — nothing
     // to anchor column positions to, so this must yield no transactions...
-    expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0 });
+    expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0, skippedRows: [] });
 
     // ...but once the header row itself is present (with or without the
     // metadata rows above it), parsing succeeds the same way either way.
@@ -166,6 +180,6 @@ describe('parseEnparaSheet', () => {
 
   test('returns no transactions and no false skips when the header row cannot be found', () => {
     const rows = [['this', 'is', 'not', 'a', 'recognizable', 'enpara', 'export']];
-    expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0 });
+    expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0, skippedRows: [] });
   });
 });

@@ -19,7 +19,7 @@ import { showAlert } from './AppAlert';
 import StockPicker from './StockPicker';
 import { addCustomStock, getAllStocks } from '../db/stocksRepo';
 import { addTransaction } from '../db/transactionsRepo';
-import { parseEnparaSheet, ParsedImportTransaction } from '../domain/importParser';
+import { parseEnparaSheet, ParsedImportTransaction, SkippedImportRow } from '../domain/importParser';
 import { Stock, TransactionType } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
 
@@ -68,7 +68,8 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
   const [fileName, setFileName] = useState('');
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
-  const [skippedCount, setSkippedCount] = useState(0);
+  const [skippedRows, setSkippedRows] = useState<SkippedImportRow[]>([]);
+  const [showSkipped, setShowSkipped] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [failedCount, setFailedCount] = useState(0);
@@ -77,7 +78,8 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
     setStep('pick');
     setFileName('');
     setRows([]);
-    setSkippedCount(0);
+    setSkippedRows([]);
+    setShowSkipped(false);
     setEditingRowId(null);
     setProgress({ done: 0, total: 0 });
     setFailedCount(0);
@@ -106,15 +108,13 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, raw: false });
 
-      const { transactions, skippedCount: skipped } = parseEnparaSheet(sheetRows);
-      if (transactions.length === 0) {
+      const { transactions, skippedRows: parsedSkippedRows } = parseEnparaSheet(sheetRows);
+      if (transactions.length === 0 && parsedSkippedRows.length === 0) {
         console.error(
           '[ImportExcelModal] parsed 0 transactions. sheetNames=',
           workbook.SheetNames,
           'rowCount=',
           sheetRows.length,
-          'skipped=',
-          skipped,
           'first 10 rows=',
           JSON.stringify(sheetRows.slice(0, 10))
         );
@@ -132,7 +132,7 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
         }))
       );
       setFileName(asset.name);
-      setSkippedCount(skipped);
+      setSkippedRows(parsedSkippedRows);
       setStep('preview');
     } catch (error) {
       console.error('[ImportExcelModal] file read/parse failed:', error);
@@ -274,10 +274,10 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
                     <SummaryLine label="Alım" value={`${buyCount}`} />
                     <SummaryLine label="Satım" value={`${sellCount}`} />
                     <SummaryLine label="Farklı hisse" value={`${uniqueSymbolCount}`} />
-                    {skippedCount > 0 && (
+                    {skippedRows.length > 0 && (
                       <SummaryLine
                         label="Atlanan satır"
-                        value={`${skippedCount}`}
+                        value={`${skippedRows.length}`}
                         hint="Fon işlemi, transfer veya vergi kesintisi gibi hisse dışı kayıtlar"
                       />
                     )}
@@ -293,21 +293,57 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
                     </View>
                   )}
 
-                  <Text style={styles.tableHint}>
-                    Bir satıra dokunarak hisseyi, adedi, fiyatı veya tarihi düzenleyebilirsin.
-                  </Text>
+                  {rows.length > 0 && (
+                    <>
+                      <Text style={styles.tableHint}>
+                        Bir satıra dokunarak hisseyi, adedi, fiyatı veya tarihi düzenleyebilirsin.
+                      </Text>
+                      <View style={styles.table}>
+                        {rows.map((r) => (
+                          <PreviewRowCard key={r.rowId} row={r} onPress={() => setEditingRowId(r.rowId)} />
+                        ))}
+                      </View>
+                    </>
+                  )}
 
-                  <View style={styles.table}>
-                    {rows.map((r) => (
-                      <PreviewRowCard key={r.rowId} row={r} onPress={() => setEditingRowId(r.rowId)} />
-                    ))}
-                  </View>
+                  {skippedRows.length > 0 && (
+                    <View style={styles.skippedSection}>
+                      <Pressable
+                        style={styles.skippedHeader}
+                        onPress={() => setShowSkipped((v) => !v)}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: showSkipped }}
+                      >
+                        <Ionicons
+                          name={showSkipped ? 'chevron-down' : 'chevron-forward'}
+                          size={18}
+                          color={colors.textMuted}
+                        />
+                        <Text style={styles.skippedHeaderText}>
+                          Atlanan Satırlar ({skippedRows.length})
+                        </Text>
+                      </Pressable>
+                      {showSkipped && (
+                        <>
+                          <Text style={styles.tableHint}>
+                            Bu satırlar hisse alım/satım işlemi olarak tanınmadığı için içe
+                            aktarılmayacak.
+                          </Text>
+                          {skippedRows.map((r, index) => (
+                            <SkippedRowCard key={`skipped-${index}`} row={r} />
+                          ))}
+                        </>
+                      )}
+                    </View>
+                  )}
                 </ScrollView>
 
                 <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm }]}>
-                  <Pressable style={styles.primaryButton} onPress={handleConfirmImport} accessibilityRole="button">
-                    <Text style={styles.primaryButtonText}>{rows.length} İşlemi İçe Aktar</Text>
-                  </Pressable>
+                  {rows.length > 0 && (
+                    <Pressable style={styles.primaryButton} onPress={handleConfirmImport} accessibilityRole="button">
+                      <Text style={styles.primaryButtonText}>{rows.length} İşlemi İçe Aktar</Text>
+                    </Pressable>
+                  )}
                   <Pressable style={styles.secondaryButton} onPress={reset} accessibilityRole="button">
                     <Text style={styles.secondaryButtonText}>Farklı dosya seç</Text>
                   </Pressable>
@@ -378,6 +414,22 @@ function PreviewRowCard({ row, onPress }: { row: PreviewRow; onPress: () => void
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </View>
     </Pressable>
+  );
+}
+
+function SkippedRowCard({ row }: { row: SkippedImportRow }) {
+  return (
+    <View style={styles.skippedRowCard}>
+      <View style={styles.skippedRowTop}>
+        <Text style={styles.skippedRowDate}>{row.date || '—'}</Text>
+        <Text style={styles.skippedRowReason}>{row.reason}</Text>
+      </View>
+      <Text style={styles.skippedRowDetail} numberOfLines={2}>
+        {row.orderType ? `${row.orderType} · ` : ''}
+        {row.description || '(açıklama yok)'}
+        {row.amount ? ` · ${row.amount}` : ''}
+      </Text>
+    </View>
   );
 }
 
@@ -587,6 +639,49 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   table: { gap: spacing.xs },
+  skippedSection: { marginTop: spacing.md },
+  skippedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: touchTarget.minSize,
+  },
+  skippedHeaderText: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.body.fontSize,
+  },
+  skippedRowCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.xs,
+    opacity: 0.75,
+  },
+  skippedRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  skippedRowDate: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+  },
+  skippedRowReason: {
+    color: colors.textMuted,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.caption.fontSize,
+    fontStyle: 'italic',
+  },
+  skippedRowDetail: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+  },
   rowCard: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -641,6 +736,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     backgroundColor: colors.primary,
     minHeight: touchTarget.minSize,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',

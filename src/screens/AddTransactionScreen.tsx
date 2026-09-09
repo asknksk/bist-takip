@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -46,6 +46,7 @@ function formatDisplayTime(d: Date): string {
 
 export default function AddTransactionScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [stockId, setStockId] = useState<number | null>(null);
   const [type, setType] = useState<TransactionType>('buy');
@@ -90,6 +91,23 @@ export default function AddTransactionScreen() {
   function handleDatePickerDismiss() {
     setShowDatePicker(false);
   }
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => setImportVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Excel'den içe aktar"
+          style={styles.headerImportButton}
+        >
+          <Ionicons name="document-attach-outline" size={16} color={colors.primary} />
+          <Text style={styles.headerImportButtonText}>Excel</Text>
+        </Pressable>
+      ),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
 
   function handleTimeValueChange(event: DateTimePickerChangeEvent, selected: Date) {
     if (Platform.OS === 'android') {
@@ -172,15 +190,6 @@ export default function AddTransactionScreen() {
         contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
       >
-        <Pressable
-          style={styles.importButton}
-          onPress={() => setImportVisible(true)}
-          accessibilityRole="button"
-        >
-          <Ionicons name="document-attach-outline" size={18} color={colors.primary} />
-          <Text style={styles.importButtonText}>Excel'den İçe Aktar</Text>
-        </Pressable>
-
         <Text style={styles.label}>Hisse</Text>
         <StockPicker
           stocks={stocks}
@@ -347,22 +356,20 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontRegular,
     fontSize: typography.body.fontSize,
   },
-  importButton: {
+  headerImportButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.xs,
     minHeight: touchTarget.minSize,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    marginBottom: spacing.sm,
+    justifyContent: 'center',
   },
-  importButtonText: {
+  headerImportButtonText: {
     color: colors.primary,
-    fontFamily: typography.fontMedium,
-    fontSize: typography.body.fontSize,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.label.fontSize,
   },
   priceHint: {
     marginTop: spacing.xs,

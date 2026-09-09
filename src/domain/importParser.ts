@@ -7,9 +7,18 @@ export interface ParsedImportTransaction {
   price: number;
 }
 
+export interface SkippedImportRow {
+  date: string; // raw cell text — may not be a valid date (e.g. a footer row)
+  orderType: string;
+  description: string;
+  amount: string;
+  reason: string;
+}
+
 export interface ImportParseResult {
   transactions: ParsedImportTransaction[];
   skippedCount: number;
+  skippedRows: SkippedImportRow[];
 }
 
 const HEADER_LABELS = {
@@ -74,29 +83,43 @@ function findColumnIndexes(rows: unknown[][]): ColumnIndexes | null {
  */
 export function parseEnparaSheet(rows: unknown[][]): ImportParseResult {
   const transactions: ParsedImportTransaction[] = [];
-  let skippedCount = 0;
+  const skippedRows: SkippedImportRow[] = [];
 
   const columns = findColumnIndexes(rows);
   if (!columns) {
-    return { transactions: [], skippedCount: 0 };
+    return { transactions: [], skippedCount: 0, skippedRows: [] };
   }
 
   for (const row of rows) {
-    const dateIso = parseTurkishDate(String(row[columns.date] ?? ''));
+    const dateRaw = String(row[columns.date] ?? '');
+    const dateIso = parseTurkishDate(dateRaw);
     if (!dateIso) continue; // not a data row (header/footer/blank line)
 
     const orderType = String(row[columns.orderType] ?? '').trim();
+    const description = String(row[columns.description] ?? '');
+    const amountRaw = String(row[columns.amount] ?? '');
+
     if (orderType !== 'Hisse alış' && orderType !== 'Hisse satış') {
-      skippedCount += 1;
+      skippedRows.push({
+        date: dateRaw,
+        orderType,
+        description,
+        amount: amountRaw,
+        reason: 'Hisse alım/satım işlemi değil',
+      });
       continue;
     }
 
-    const description = String(row[columns.description] ?? '');
-    const amountRaw = String(row[columns.amount] ?? '');
     const match = DESCRIPTION_REGEX.exec(description);
 
     if (!match) {
-      skippedCount += 1;
+      skippedRows.push({
+        date: dateRaw,
+        orderType,
+        description,
+        amount: amountRaw,
+        reason: 'Açıklama satırı okunamadı',
+      });
       continue;
     }
 
@@ -105,7 +128,13 @@ export function parseEnparaSheet(rows: unknown[][]): ImportParseResult {
     const amount = Math.abs(parseTurkishAmount(amountRaw));
 
     if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(amount) || amount <= 0) {
-      skippedCount += 1;
+      skippedRows.push({
+        date: dateRaw,
+        orderType,
+        description,
+        amount: amountRaw,
+        reason: 'Adet veya tutar geçersiz',
+      });
       continue;
     }
 
@@ -128,5 +157,5 @@ export function parseEnparaSheet(rows: unknown[][]): ImportParseResult {
   transactions.reverse();
   transactions.sort((a, b) => a.date.localeCompare(b.date));
 
-  return { transactions, skippedCount };
+  return { transactions, skippedCount: skippedRows.length, skippedRows };
 }

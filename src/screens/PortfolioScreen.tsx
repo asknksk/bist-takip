@@ -26,7 +26,6 @@ export default function PortfolioScreen() {
   const navigation = useNavigation();
   const [rows, setRows] = useState<PortfolioRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showClosed, setShowClosed] = useState(false);
   const [prices, setPrices] = useState<PriceMap>(new Map());
   const [pricesLoading, setPricesLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,11 +70,7 @@ export default function PortfolioScreen() {
     setRefreshing(false);
   }
 
-  const { openRows, closedRows } = useMemo(() => {
-    const open = rows.filter((r) => r.heldQuantity > 0);
-    const closed = rows.filter((r) => r.heldQuantity <= 0);
-    return { openRows: open, closedRows: closed };
-  }, [rows]);
+  const openRows = useMemo(() => rows.filter((r) => r.heldQuantity > 0), [rows]);
 
   const { totalValue, totalCost, missingPriceCount } = useMemo(() => {
     let total = 0;
@@ -178,13 +173,18 @@ export default function PortfolioScreen() {
     );
   }
 
-  if (rows.length === 0) {
+  if (openRows.length === 0) {
+    const hasHistory = rows.length > 0;
     return (
       <View style={styles.empty}>
         <Ionicons name="pie-chart-outline" size={40} color={colors.textMuted} />
-        <Text style={styles.emptyText}>Henüz işlem yok.</Text>
+        <Text style={styles.emptyText}>
+          {hasHistory ? 'Açık pozisyonun yok.' : 'Henüz işlem yok.'}
+        </Text>
         <Text style={styles.emptySubtext}>
-          "İşlem Ekle" sekmesinden ilk alım/satımını gir.
+          {hasHistory
+            ? 'Tüm hisselerin satılmış — geçmiş işlemlerini Geçmiş sekmesinden görebilirsin.'
+            : '"İşlem Ekle" sekmesinden ilk alım/satımını gir.'}
         </Text>
       </View>
     );
@@ -244,40 +244,6 @@ export default function PortfolioScreen() {
           onSell={() => setSellItem(item)}
         />
       ))}
-
-      {openRows.length === 0 && closedRows.length > 0 && (
-        <View style={styles.emptyInline}>
-          <Text style={styles.emptySubtext}>Açık pozisyonun yok.</Text>
-        </View>
-      )}
-
-      {closedRows.length > 0 && (
-        <View style={styles.closedSection}>
-          <Pressable
-            style={styles.closedHeader}
-            onPress={() => setShowClosed((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: showClosed }}
-          >
-            <Ionicons
-              name={showClosed ? 'chevron-down' : 'chevron-forward'}
-              size={18}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.closedHeaderText}>Kapanan Pozisyonlar ({closedRows.length})</Text>
-          </Pressable>
-          {showClosed &&
-            closedRows.map((item) => (
-              <PortfolioCard
-                key={item.stockId}
-                item={item}
-                currentPrice={undefined}
-                onPress={() => setDetailStockId(item.stockId)}
-                onDelete={() => handleDeleteStock(item)}
-              />
-            ))}
-        </View>
-      )}
 
       <QuickSellModal
         visible={sellItem !== null}
@@ -441,7 +407,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingHorizontal: spacing.xl,
   },
-  emptyInline: { alignItems: 'center', paddingVertical: spacing.lg },
   emptyText: {
     color: colors.textPrimary,
     fontFamily: typography.fontMedium,
@@ -583,18 +548,5 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontRegular,
     fontSize: typography.caption.fontSize,
     marginTop: spacing.xs,
-  },
-  closedSection: { marginTop: spacing.sm },
-  closedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    minHeight: touchTarget.minSize,
-    marginBottom: spacing.sm,
-  },
-  closedHeaderText: {
-    color: colors.textSecondary,
-    fontFamily: typography.fontSemiBold,
-    fontSize: typography.body.fontSize,
   },
 });
