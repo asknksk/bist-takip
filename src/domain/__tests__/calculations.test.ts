@@ -7,6 +7,7 @@ import {
   calculateDailyRealizedPnL,
   calculateMonthlyRealizedPnL,
   calculateRealizedPnLByStockInRange,
+  calculateSellPnLs,
 } from '../calculations';
 import { Stock, Transaction } from '../types';
 
@@ -71,6 +72,54 @@ describe('calculatePortfolioRow', () => {
     const txs = [tx({ stockId: stock2.id, type: 'buy', quantity: 100, price: 5 })];
     const row = calculatePortfolioRow(stock, txs);
     expect(row.boughtQuantity).toBe(0);
+  });
+
+  test('a fully closed round trip resets avgBuyPrice to 0 (no current holding), not a blended average', () => {
+    // Regression test: averaging ALL buys ever (including already-sold lots)
+    // instead of tracking a moving average produced a nonsensical
+    // "average cost" once a stock had been fully bought and sold before.
+    const txs: Transaction[] = [
+      tx({ id: 1, type: 'buy', quantity: 128, price: 370.75, date: '2026-08-18' }),
+      tx({ id: 2, type: 'sell', quantity: 128, price: 395.0, date: '2026-08-20' }),
+    ];
+    const row = calculatePortfolioRow(stock, txs);
+    expect(row.heldQuantity).toBe(0);
+    expect(row.avgBuyPrice).toBe(0);
+    expect(row.realizedPnL).toBeCloseTo(128 * (395.0 - 370.75), 5);
+  });
+
+  test('multiple buy/sell round trips: total realized P&L is the sum of each trip\'s own profit, not a blended-average result', () => {
+    // Same shape as a real user's TUPRS history: buy N, sell N, at a
+    // different price each round trip.
+    const txs: Transaction[] = [
+      tx({ id: 1, type: 'buy', quantity: 128, price: 370.75, date: '2026-08-18' }),
+      tx({ id: 2, type: 'sell', quantity: 128, price: 395.0, date: '2026-08-20' }),
+      tx({ id: 3, type: 'buy', quantity: 61, price: 400.5, date: '2026-08-21' }),
+      tx({ id: 4, type: 'sell', quantity: 61, price: 401.25, date: '2026-08-24' }),
+      tx({ id: 5, type: 'buy', quantity: 74, price: 399.5, date: '2026-08-31' }),
+      tx({ id: 6, type: 'sell', quantity: 74, price: 415.0, date: '2026-09-01' }),
+      tx({ id: 7, type: 'buy', quantity: 102, price: 390.75, date: '2026-09-08' }),
+      tx({ id: 8, type: 'sell', quantity: 102, price: 404.5, date: '2026-09-09' }),
+    ];
+    const expectedTotal =
+      128 * (395.0 - 370.75) + 61 * (401.25 - 400.5) + 74 * (415.0 - 399.5) + 102 * (404.5 - 390.75);
+    const row = calculatePortfolioRow(stock, txs);
+    expect(row.heldQuantity).toBe(0);
+    expect(row.avgBuyPrice).toBe(0);
+    expect(row.realizedPnL).toBeCloseTo(expectedTotal, 5);
+  });
+
+  test('a new round trip after a full sell-out uses only the new lot\'s cost, not blended with the old one', () => {
+    const txs: Transaction[] = [
+      tx({ id: 1, type: 'buy', quantity: 100, price: 10, date: '2026-01-01' }),
+      tx({ id: 2, type: 'sell', quantity: 100, price: 12, date: '2026-01-05' }),
+      tx({ id: 3, type: 'buy', quantity: 50, price: 20, date: '2026-02-01' }),
+    ];
+    const row = calculatePortfolioRow(stock, txs);
+    expect(row.heldQuantity).toBe(50);
+    // Must be 20 (the new lot's price), not (100*10 + 50*20) / 150 = 13.33.
+    expect(row.avgBuyPrice).toBe(20);
+    expect(row.realizedPnL).toBeCloseTo(100 * (12 - 10), 5);
   });
 });
 
@@ -148,6 +197,22 @@ describe('calculateDailyRealizedPnL', () => {
     const txs = [tx({ type: 'buy' })];
     expect(calculateDailyRealizedPnL([stock], txs)).toEqual([]);
   });
+
+  test('attributes each round trip\'s own P&L to its own day, not a blended-average result', () => {
+    // Regression: using one blended all-time average buy price for every
+    // sell would smear each round trip's real profit across the wrong days.
+    const txs: Transaction[] = [
+      tx({ id: 1, type: 'buy', quantity: 128, price: 370.75, date: '2026-08-18' }),
+      tx({ id: 2, type: 'sell', quantity: 128, price: 395.0, date: '2026-08-20' }),
+      tx({ id: 3, type: 'buy', quantity: 61, price: 400.5, date: '2026-08-21' }),
+      tx({ id: 4, type: 'sell', quantity: 61, price: 401.25, date: '2026-08-24' }),
+    ];
+    const daily = calculateDailyRealizedPnL([stock], txs);
+    expect(daily).toEqual([
+      { date: '2026-08-24', realizedPnL: 61 * (401.25 - 400.5) },
+      { date: '2026-08-20', realizedPnL: 128 * (395.0 - 370.75) },
+    ]);
+  });
 });
 
 describe('calculateMonthlyRealizedPnL', () => {
@@ -211,6 +276,22 @@ describe('calculateRealizedPnLByStockInRange', () => {
     const result = calculateRealizedPnLByStockInRange([stock], txs, '', '9999-12-31');
     expect(result).toEqual([
       { stockId: stock.id, symbol: 'THYAO', name: 'Türk Hava Yolları', realizedPnL: 250 },
+    ]);
+  });
+});
+
+describe('calculateSellPnLs', () => {
+  test('computes one entry per sell transaction using the moving average cost at that point in time', () => {
+    const txs: Transaction[] = [
+      tx({ id: 1, type: 'buy', quantity: 100, price: 10, date: '2026-01-01' }),
+      tx({ id: 2, type: 'sell', quantity: 100, price: 12, date: '2026-01-05' }),
+      tx({ id: 3, type: 'buy', quantity: 50, price: 20, date: '2026-02-01' }),
+      tx({ id: 4, type: 'sell', quantity: 20, price: 25, date: '2026-02-10' }),
+    ];
+    const result = calculateSellPnLs([stock], txs);
+    expect(result).toEqual([
+      { transactionId: 2, stockId: stock.id, date: '2026-01-05', quantity: 100, realizedPnL: 200 },
+      { transactionId: 4, stockId: stock.id, date: '2026-02-10', quantity: 20, realizedPnL: 100 },
     ]);
   });
 });

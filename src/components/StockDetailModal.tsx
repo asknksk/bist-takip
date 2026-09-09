@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from './AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { deleteTransaction, getAllTransactions } from '../db/transactionsRepo';
-import { calculatePortfolioRow } from '../domain/calculations';
+import { calculatePortfolioRow, calculateSellPnLs } from '../domain/calculations';
 import { PortfolioRow, Stock, Transaction } from '../domain/types';
 import { fetchCurrentPrice } from '../services/priceService';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
@@ -93,17 +93,18 @@ export default function StockDetailModal({
   }, [transactions, dateRange]);
 
   const rangeRealized = useMemo(() => {
-    if (!dateRange || !row) return null;
-    const rangeSells = transactions.filter(
-      (t) => t.type === 'sell' && t.date >= dateRange.from && t.date <= dateRange.to
+    if (!dateRange || !stock) return null;
+    // Uses the same moving-average-cost per-sell P&L as the rest of the
+    // app (calculateSellPnLs) rather than a single blended avgBuyPrice —
+    // a stock with multiple buy/sell round trips needs each sell matched
+    // to its own point-in-time cost basis, not one number for all of them.
+    const sellPnLs = calculateSellPnLs([stock], transactions).filter(
+      (s) => s.date >= dateRange.from && s.date <= dateRange.to
     );
-    const soldQuantity = rangeSells.reduce((acc, t) => acc + t.quantity, 0);
-    const realizedPnL = rangeSells.reduce(
-      (acc, t) => acc + t.quantity * (t.price - row.avgBuyPrice),
-      0
-    );
+    const soldQuantity = sellPnLs.reduce((acc, s) => acc + s.quantity, 0);
+    const realizedPnL = sellPnLs.reduce((acc, s) => acc + s.realizedPnL, 0);
     return { soldQuantity, realizedPnL };
-  }, [dateRange, transactions, row]);
+  }, [dateRange, transactions, stock]);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>

@@ -12,19 +12,92 @@ function sum(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0);
 }
 
+function sortChronologically(transactions: Transaction[]): Transaction[] {
+  return transactions.slice().sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+}
+
+export interface SellPnL {
+  transactionId: number;
+  stockId: number;
+  date: string;
+  quantity: number;
+  realizedPnL: number;
+}
+
+/**
+ * Walks each stock's transactions in chronological order, maintaining a
+ * moving (weighted) average cost that updates on every buy and is left
+ * unchanged by sells — the standard "moving average cost" method. This is
+ * the ONLY correct way to compute realized P&L once a stock has more than
+ * one buy/sell round trip: averaging every buy ever made (regardless of
+ * whether those shares were already sold in an earlier round trip) blends
+ * unrelated price levels together and produces a meaningless "average
+ * cost" and incorrect per-transaction/per-period P&L, even though the
+ * all-time grand total happens to cancel out correctly when the position
+ * ends up fully closed. Every other function in this module is built on
+ * top of this one so they all agree with each other.
+ */
+export function calculateSellPnLs(stocks: Stock[], transactions: Transaction[]): SellPnL[] {
+  const results: SellPnL[] = [];
+
+  for (const stock of stocks) {
+    const stockTxs = sortChronologically(transactions.filter((t) => t.stockId === stock.id));
+
+    let runningQty = 0;
+    let runningAvgCost = 0;
+
+    for (const t of stockTxs) {
+      if (t.type === 'buy') {
+        const newQty = runningQty + t.quantity;
+        runningAvgCost = newQty > 0 ? (runningQty * runningAvgCost + t.quantity * t.price) / newQty : 0;
+        runningQty = newQty;
+      } else {
+        results.push({
+          transactionId: t.id,
+          stockId: t.stockId,
+          date: t.date,
+          quantity: t.quantity,
+          realizedPnL: t.quantity * (t.price - runningAvgCost),
+        });
+        runningQty -= t.quantity;
+        if (runningQty <= 0) {
+          runningQty = 0;
+          runningAvgCost = 0;
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
 export function calculatePortfolioRow(stock: Stock, transactions: Transaction[]): PortfolioRow {
-  const stockTxs = transactions.filter((t) => t.stockId === stock.id);
-  const buys = stockTxs.filter((t) => t.type === 'buy');
-  const sells = stockTxs.filter((t) => t.type === 'sell');
+  const stockTxs = sortChronologically(transactions.filter((t) => t.stockId === stock.id));
 
-  const boughtQuantity = sum(buys.map((t) => t.quantity));
-  const soldQuantity = sum(sells.map((t) => t.quantity));
-  const totalBuyCost = sum(buys.map((t) => t.quantity * t.price));
-  const totalSellRevenue = sum(sells.map((t) => t.quantity * t.price));
+  let runningQty = 0;
+  let runningAvgCost = 0;
+  let boughtQuantity = 0;
+  let soldQuantity = 0;
+  let totalSellRevenue = 0;
+  let realizedPnL = 0;
 
-  const avgBuyPrice = boughtQuantity > 0 ? totalBuyCost / boughtQuantity : 0;
-  const avgSellPrice = soldQuantity > 0 ? totalSellRevenue / soldQuantity : 0;
-  const realizedPnL = soldQuantity > 0 ? soldQuantity * (avgSellPrice - avgBuyPrice) : 0;
+  for (const t of stockTxs) {
+    if (t.type === 'buy') {
+      boughtQuantity += t.quantity;
+      const newQty = runningQty + t.quantity;
+      runningAvgCost = newQty > 0 ? (runningQty * runningAvgCost + t.quantity * t.price) / newQty : 0;
+      runningQty = newQty;
+    } else {
+      soldQuantity += t.quantity;
+      totalSellRevenue += t.quantity * t.price;
+      realizedPnL += t.quantity * (t.price - runningAvgCost);
+      runningQty -= t.quantity;
+      if (runningQty <= 0) {
+        runningQty = 0;
+        runningAvgCost = 0;
+      }
+    }
+  }
 
   return {
     stockId: stock.id,
@@ -32,9 +105,11 @@ export function calculatePortfolioRow(stock: Stock, transactions: Transaction[])
     name: stock.name,
     boughtQuantity,
     soldQuantity,
-    heldQuantity: boughtQuantity - soldQuantity,
-    avgBuyPrice,
-    avgSellPrice,
+    heldQuantity: runningQty,
+    // Current cost basis of the shares still held — 0 when nothing is held,
+    // never a blend with lots from an already-closed earlier round trip.
+    avgBuyPrice: runningAvgCost,
+    avgSellPrice: soldQuantity > 0 ? totalSellRevenue / soldQuantity : 0,
     realizedPnL,
   };
 }
@@ -57,36 +132,21 @@ export function calculateCumulativePnLOverTime(
   stocks: Stock[],
   transactions: Transaction[]
 ): CumulativePnLPoint[] {
-  const avgBuyPriceByStock = new Map<number, number>();
-  for (const stock of stocks) {
-    avgBuyPriceByStock.set(stock.id, calculatePortfolioRow(stock, transactions).avgBuyPrice);
-  }
-
-  const sells = transactions
-    .filter((t) => t.type === 'sell')
-    .slice()
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const sellPnLs = calculateSellPnLs(stocks, transactions).sort(
+    (a, b) => a.date.localeCompare(b.date) || a.transactionId - b.transactionId
+  );
 
   let cumulative = 0;
-  return sells.map((t) => {
-    const avgBuyPrice = avgBuyPriceByStock.get(t.stockId) ?? 0;
-    cumulative += t.quantity * (t.price - avgBuyPrice);
-    return { date: t.date, cumulativePnL: cumulative };
+  return sellPnLs.map((s) => {
+    cumulative += s.realizedPnL;
+    return { date: s.date, cumulativePnL: cumulative };
   });
 }
 
 export function calculateDailyRealizedPnL(stocks: Stock[], transactions: Transaction[]): DailyPnL[] {
-  const avgBuyPriceByStock = new Map<number, number>();
-  for (const stock of stocks) {
-    avgBuyPriceByStock.set(stock.id, calculatePortfolioRow(stock, transactions).avgBuyPrice);
-  }
-
   const pnlByDate = new Map<string, number>();
-  for (const t of transactions) {
-    if (t.type !== 'sell') continue;
-    const avgBuyPrice = avgBuyPriceByStock.get(t.stockId) ?? 0;
-    const pnl = t.quantity * (t.price - avgBuyPrice);
-    pnlByDate.set(t.date, (pnlByDate.get(t.date) ?? 0) + pnl);
+  for (const s of calculateSellPnLs(stocks, transactions)) {
+    pnlByDate.set(s.date, (pnlByDate.get(s.date) ?? 0) + s.realizedPnL);
   }
 
   return Array.from(pnlByDate.entries())
@@ -95,18 +155,10 @@ export function calculateDailyRealizedPnL(stocks: Stock[], transactions: Transac
 }
 
 export function calculateMonthlyRealizedPnL(stocks: Stock[], transactions: Transaction[]): MonthlyPnL[] {
-  const avgBuyPriceByStock = new Map<number, number>();
-  for (const stock of stocks) {
-    avgBuyPriceByStock.set(stock.id, calculatePortfolioRow(stock, transactions).avgBuyPrice);
-  }
-
   const pnlByMonth = new Map<string, number>();
-  for (const t of transactions) {
-    if (t.type !== 'sell') continue;
-    const avgBuyPrice = avgBuyPriceByStock.get(t.stockId) ?? 0;
-    const pnl = t.quantity * (t.price - avgBuyPrice);
-    const month = t.date.slice(0, 7);
-    pnlByMonth.set(month, (pnlByMonth.get(month) ?? 0) + pnl);
+  for (const s of calculateSellPnLs(stocks, transactions)) {
+    const month = s.date.slice(0, 7);
+    pnlByMonth.set(month, (pnlByMonth.get(month) ?? 0) + s.realizedPnL);
   }
 
   return Array.from(pnlByMonth.entries())
@@ -118,8 +170,8 @@ export function calculateMonthlyRealizedPnL(stocks: Stock[], transactions: Trans
  * Realized P&L per stock, counting only sell transactions whose date falls
  * within [fromIso, toIso] (both inclusive, ISO YYYY-MM-DD strings compare
  * lexicographically). Pass '' for fromIso or a far-future date for toIso to
- * leave that side of the range open. Uses each stock's overall average buy
- * price, consistent with calculateDailyRealizedPnL/calculateMonthlyRealizedPnL.
+ * leave that side of the range open. Built on the same moving-average-cost
+ * per-sell P&L as calculateDailyRealizedPnL/calculateMonthlyRealizedPnL.
  */
 export function calculateRealizedPnLByStockInRange(
   stocks: Stock[],
@@ -127,18 +179,10 @@ export function calculateRealizedPnLByStockInRange(
   fromIso: string,
   toIso: string
 ): StockPnLInRange[] {
-  const avgBuyPriceByStock = new Map<number, number>();
-  for (const stock of stocks) {
-    avgBuyPriceByStock.set(stock.id, calculatePortfolioRow(stock, transactions).avgBuyPrice);
-  }
-
   const pnlByStock = new Map<number, number>();
-  for (const t of transactions) {
-    if (t.type !== 'sell') continue;
-    if (t.date < fromIso || t.date > toIso) continue;
-    const avgBuyPrice = avgBuyPriceByStock.get(t.stockId) ?? 0;
-    const pnl = t.quantity * (t.price - avgBuyPrice);
-    pnlByStock.set(t.stockId, (pnlByStock.get(t.stockId) ?? 0) + pnl);
+  for (const s of calculateSellPnLs(stocks, transactions)) {
+    if (s.date < fromIso || s.date > toIso) continue;
+    pnlByStock.set(s.stockId, (pnlByStock.get(s.stockId) ?? 0) + s.realizedPnL);
   }
 
   const stockById = new Map(stocks.map((s) => [s.id, s]));
