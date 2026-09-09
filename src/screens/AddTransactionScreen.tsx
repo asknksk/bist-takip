@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerChangeEvent } from '@react-native-community/datetimepicker';
 import StockPicker from '../components/StockPicker';
 import ImportExcelModal from '../components/ImportExcelModal';
+import PriceStepperInput, { formatPrice } from '../components/PriceStepperInput';
 import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { addTransaction, getAllTransactions } from '../db/transactionsRepo';
@@ -23,8 +24,6 @@ import { calculatePortfolioRow, validateSellQuantity } from '../domain/calculati
 import { Stock, TransactionType } from '../domain/types';
 import { fetchCurrentPrice } from '../services/priceService';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
-
-const PRICE_STEP = 0.01;
 
 function toIsoDate(d: Date): string {
   const year = d.getFullYear();
@@ -35,14 +34,6 @@ function toIsoDate(d: Date): string {
 
 function formatDisplayDate(d: Date): string {
   return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
-}
-
-function parsePriceInput(raw: string): number {
-  return Number(raw.replace(',', '.'));
-}
-
-function formatPrice(n: number): string {
-  return n.toFixed(2).replace('.', ',');
 }
 
 export default function AddTransactionScreen() {
@@ -78,11 +69,6 @@ export default function AddTransactionScreen() {
       cancelled = true;
     };
   }, [stockId]);
-
-  function stepPrice(delta: number) {
-    const current = parsePriceInput(price || '0') || 0;
-    setPrice(formatPrice(Math.max(0, current + delta)));
-  }
 
   function handleDateValueChange(event: DateTimePickerChangeEvent, selected: Date) {
     if (Platform.OS === 'android') {
@@ -226,40 +212,7 @@ export default function AddTransactionScreen() {
         />
 
         <Text style={styles.label}>Fiyat (TL)</Text>
-        <View style={styles.priceContainer}>
-          <TextInput
-            style={styles.priceInput}
-            keyboardType="numeric"
-            placeholder="0,00"
-            placeholderTextColor={colors.textMuted}
-            value={price}
-            onChangeText={setPrice}
-          />
-          {priceLoading && (
-            <ActivityIndicator size="small" color={colors.textMuted} style={styles.priceLoadingIndicator} />
-          )}
-          <View style={styles.stepperCol}>
-            <Pressable
-              style={styles.stepperButton}
-              onPress={() => stepPrice(PRICE_STEP)}
-              accessibilityRole="button"
-              accessibilityLabel="Fiyatı artır"
-              hitSlop={4}
-            >
-              <Ionicons name="add" size={16} color={colors.textPrimary} />
-            </Pressable>
-            <View style={styles.stepperDivider} />
-            <Pressable
-              style={styles.stepperButton}
-              onPress={() => stepPrice(-PRICE_STEP)}
-              accessibilityRole="button"
-              accessibilityLabel="Fiyatı azalt"
-              hitSlop={4}
-            >
-              <Ionicons name="remove" size={16} color={colors.textPrimary} />
-            </Pressable>
-          </View>
-        </View>
+        <PriceStepperInput value={price} onChange={setPrice} loading={priceLoading} />
         {stockId && (
           <Text style={styles.priceHint}>
             Fiyat, seçtiğin hissenin gecikmeli güncel fiyatıyla dolduruldu — dilersen +/- ile
@@ -357,35 +310,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontMedium,
     fontSize: typography.body.fontSize,
   },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    minHeight: touchTarget.minSize,
-    overflow: 'hidden',
-  },
-  priceInput: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    color: colors.textPrimary,
-    fontFamily: typography.fontMedium,
-    fontSize: typography.body.fontSize,
-  },
-  priceLoadingIndicator: { alignSelf: 'center', marginRight: spacing.sm },
-  stepperCol: {
-    width: 40,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.border,
-  },
-  stepperButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperDivider: { height: 1, backgroundColor: colors.border },
   priceHint: {
     marginTop: spacing.xs,
     color: colors.textMuted,

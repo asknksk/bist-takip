@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../components/AppAlert';
+import QuickSellModal from '../components/QuickSellModal';
 import { forceDeleteStock, getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import { calculatePortfolio } from '../domain/calculations';
@@ -22,6 +23,7 @@ export default function PortfolioScreen() {
   const [prices, setPrices] = useState<PriceMap>(new Map());
   const [pricesLoading, setPricesLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [sellItem, setSellItem] = useState<PortfolioRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -137,6 +139,7 @@ export default function PortfolioScreen() {
           item={item}
           currentPrice={priceStateFor(item.symbol)}
           onDelete={() => handleDeleteStock(item)}
+          onSell={() => setSellItem(item)}
         />
       ))}
 
@@ -172,6 +175,13 @@ export default function PortfolioScreen() {
             ))}
         </View>
       )}
+
+      <QuickSellModal
+        visible={sellItem !== null}
+        item={sellItem}
+        onClose={() => setSellItem(null)}
+        onSold={load}
+      />
     </ScrollView>
   );
 }
@@ -180,10 +190,12 @@ function PortfolioCard({
   item,
   currentPrice,
   onDelete,
+  onSell,
 }: {
   item: PortfolioRow;
   currentPrice: number | null | undefined;
   onDelete: () => void;
+  onSell?: () => void;
 }) {
   const isRealizedProfit = item.realizedPnL >= 0;
   const unrealizedPnL =
@@ -204,6 +216,17 @@ function PortfolioCard({
             {item.name}
           </Text>
         </View>
+        {onSell && (
+          <Pressable
+            style={styles.sellButton}
+            onPress={onSell}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.symbol} sat`}
+          >
+            <Ionicons name="trending-down" size={14} color={colors.loss} />
+            <Text style={styles.sellButtonText}>Sat</Text>
+          </Pressable>
+        )}
         <Pressable
           style={styles.deleteButton}
           onPress={onDelete}
@@ -342,6 +365,21 @@ const styles = StyleSheet.create({
   name: {
     color: colors.textSecondary,
     fontFamily: typography.fontRegular,
+    fontSize: typography.label.fontSize,
+  },
+  sellButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: touchTarget.minSize,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sellButtonText: {
+    color: colors.loss,
+    fontFamily: typography.fontSemiBold,
     fontSize: typography.label.fontSize,
   },
   deleteButton: {
