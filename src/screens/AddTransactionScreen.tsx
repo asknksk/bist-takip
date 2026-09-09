@@ -46,8 +46,19 @@ export default function AddTransactionScreen() {
       return;
     }
 
+    // Validate date format (YYYY-MM-DD)
+    const dateFormatRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateFormatRegex.test(date)) {
+      Alert.alert('Hata', 'Tarih YYYY-AA-GG formatında olmalı (örn. 2026-09-09).');
+      return;
+    }
+
     if (type === 'sell') {
-      const stock = stocks.find((s) => s.id === stockId)!;
+      const stock = stocks.find((s) => s.id === stockId);
+      if (!stock) {
+        Alert.alert('Hata', 'Seçili hisse artık mevcut değil. Lütfen tekrar seç.');
+        return;
+      }
       const allTxs = await getAllTransactions();
       const row = calculatePortfolioRow(stock, allTxs);
       if (!validateSellQuantity(row.heldQuantity, quantityNum)) {
