@@ -1,6 +1,7 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../components/AppAlert';
@@ -283,63 +284,93 @@ function PortfolioCard({
   const isUnrealizedProfit = (unrealizedPnL ?? 0) >= 0;
   const costBasis = item.heldQuantity * item.avgBuyPrice;
   const unrealizedPct = unrealizedPnL !== null && costBasis > 0 ? unrealizedPnL / costBasis : null;
+  const totalMarketValue =
+    item.heldQuantity > 0 && typeof currentPrice === 'number' ? item.heldQuantity * currentPrice : null;
+
+  const swipeableRef = useRef<Swipeable>(null);
+
+  function handleSwipeSell() {
+    swipeableRef.current?.close();
+    onSell?.();
+  }
+
+  function handleSwipeDelete() {
+    swipeableRef.current?.close();
+    onDelete();
+  }
 
   return (
-    <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
-      <View style={styles.cardHeader}>
-        <View style={styles.symbolBadge}>
-          <Text style={styles.symbolBadgeText}>{item.symbol.slice(0, 2)}</Text>
-        </View>
-        <View style={styles.cardHeaderText}>
-          <Text style={styles.symbol}>{item.symbol}</Text>
-          <Text style={styles.name} numberOfLines={1}>
-            {item.name}
-          </Text>
-        </View>
-        {onSell && (
-          <Pressable
-            style={styles.sellButton}
-            onPress={onSell}
-            accessibilityRole="button"
-            accessibilityLabel={`${item.symbol} sat`}
-          >
-            <Ionicons name="trending-down" size={14} color={colors.loss} />
-            <Text style={styles.sellButtonText}>Sat</Text>
-          </Pressable>
-        )}
-        <Pressable
-          style={styles.deleteButton}
-          onPress={onDelete}
-          accessibilityRole="button"
-          accessibilityLabel={`${item.symbol} hissesini sil`}
-          hitSlop={8}
-        >
-          <Ionicons name="trash-outline" size={18} color={colors.destructive} />
-        </Pressable>
-      </View>
-
-      <View style={styles.metricsRow}>
-        <View>
-          <Text style={styles.metricLabel}>Elde tutulan</Text>
-          <Text style={styles.metricValue}>{item.heldQuantity}</Text>
-        </View>
-        <View>
-          <Text style={styles.metricLabel}>Ortalama maliyet</Text>
-          <Text style={styles.metricValue}>{formatCurrency(item.avgBuyPrice)} TL</Text>
-        </View>
-        {item.heldQuantity > 0 && (
-          <View>
-            <Text style={styles.metricLabel}>Güncel fiyat</Text>
-            {currentPrice === undefined ? (
-              <ActivityIndicator size="small" color={colors.textMuted} />
-            ) : currentPrice === null ? (
-              <Text style={styles.metricValueMuted}>alınamadı</Text>
-            ) : (
-              <Text style={styles.metricValue}>{formatCurrency(currentPrice)} TL</Text>
+    <View style={styles.cardWrapper}>
+      <Swipeable
+        ref={swipeableRef}
+        overshootRight={false}
+        renderRightActions={() => (
+          <View style={styles.swipeActions}>
+            {onSell && (
+              <Pressable
+                style={[styles.swipeActionButton, styles.swipeActionSell]}
+                onPress={handleSwipeSell}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.symbol} sat`}
+              >
+                <Ionicons name="trending-down" size={20} color={colors.onPrimary} />
+                <Text style={styles.swipeActionText}>Sat</Text>
+              </Pressable>
             )}
+            <Pressable
+              style={[styles.swipeActionButton, styles.swipeActionDelete]}
+              onPress={handleSwipeDelete}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.symbol} hissesini sil`}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.onPrimary} />
+              <Text style={styles.swipeActionText}>Sil</Text>
+            </Pressable>
           </View>
         )}
-      </View>
+      >
+        <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
+          <View style={styles.cardHeader}>
+            <View style={styles.symbolBadge}>
+              <Text style={styles.symbolBadgeText}>{item.symbol.slice(0, 2)}</Text>
+            </View>
+            <View style={styles.cardHeaderText}>
+              <Text style={styles.symbol}>{item.symbol}</Text>
+              <Text style={styles.name} numberOfLines={1}>
+                {item.name}
+              </Text>
+            </View>
+            <Ionicons name="chevron-back" size={16} color={colors.textMuted} />
+          </View>
+
+          <View style={styles.metricsRow}>
+            <View>
+              <Text style={styles.metricLabel}>Elde tutulan</Text>
+              <Text style={styles.metricValue}>{item.heldQuantity}</Text>
+            </View>
+            <View>
+              <Text style={styles.metricLabel}>Ortalama maliyet</Text>
+              <Text style={styles.metricValue}>{formatCurrency(item.avgBuyPrice)} TL</Text>
+            </View>
+            {item.heldQuantity > 0 && (
+              <View>
+                <Text style={styles.metricLabel}>Güncel fiyat</Text>
+                {currentPrice === undefined ? (
+                  <ActivityIndicator size="small" color={colors.textMuted} />
+                ) : currentPrice === null ? (
+                  <Text style={styles.metricValueMuted}>alınamadı</Text>
+                ) : (
+                  <Text style={styles.metricValue}>{formatCurrency(currentPrice)} TL</Text>
+                )}
+              </View>
+            )}
+          </View>
+
+          {totalMarketValue !== null && (
+            <Text style={styles.totalValueLine}>
+              Toplam Değer: {formatCurrency(totalMarketValue)} TL
+            </Text>
+          )}
 
       {unrealizedPnL !== null && (
         <View
@@ -387,7 +418,9 @@ function PortfolioCard({
       {item.heldQuantity > 0 && item.soldQuantity === 0 && (
         <Text style={styles.pnlFootnote}>Henüz satış yapılmadı.</Text>
       )}
-    </Pressable>
+        </Pressable>
+      </Swipeable>
+    </View>
   );
 }
 
@@ -459,13 +492,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   list: { padding: spacing.md, backgroundColor: colors.background },
+  cardWrapper: { marginBottom: spacing.md },
   card: {
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: spacing.md,
-    marginBottom: spacing.md,
+  },
+  swipeActions: { flexDirection: 'row', height: '100%' },
+  swipeActionButton: {
+    width: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  swipeActionSell: { backgroundColor: colors.loss },
+  swipeActionDelete: {
+    backgroundColor: colors.destructive,
+    borderTopRightRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+  },
+  swipeActionText: {
+    color: colors.onPrimary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.caption.fontSize,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
   symbolBadge: {
@@ -492,27 +543,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontRegular,
     fontSize: typography.label.fontSize,
   },
-  sellButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    minHeight: touchTarget.minSize,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  sellButtonText: {
-    color: colors.loss,
-    fontFamily: typography.fontSemiBold,
-    fontSize: typography.label.fontSize,
-  },
-  deleteButton: {
-    width: touchTarget.minSize,
-    height: touchTarget.minSize,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   metricsRow: { flexDirection: 'row', gap: spacing.lg, marginBottom: spacing.md, flexWrap: 'wrap' },
   metricLabel: {
     color: colors.textMuted,
@@ -529,6 +559,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: typography.fontMedium,
     fontSize: typography.body.fontSize,
+  },
+  totalValueLine: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.label.fontSize,
+    marginBottom: spacing.sm,
   },
   pnlPill: {
     flexDirection: 'row',
