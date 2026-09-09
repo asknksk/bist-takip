@@ -25,17 +25,16 @@ export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
           );
         `);
 
-        const row = await db.getFirstAsync<{ count: number }>(
-          'SELECT COUNT(*) as count FROM stocks'
-        );
-        if (!row || row.count === 0) {
-          for (const s of BIST_STOCKS) {
-            await db.runAsync(
-              'INSERT OR IGNORE INTO stocks (symbol, name, is_custom) VALUES (?, ?, 0)',
-              s.symbol,
-              s.name
-            );
-          }
+        // Always run (not gated on an empty check): INSERT OR IGNORE is a
+        // no-op for symbols already present, so this is cheap and also
+        // backfills any stocks added to BIST_STOCKS after a device already
+        // seeded an earlier, shorter version of the list.
+        for (const s of BIST_STOCKS) {
+          await db.runAsync(
+            'INSERT OR IGNORE INTO stocks (symbol, name, is_custom) VALUES (?, ?, 0)',
+            s.symbol,
+            s.name
+          );
         }
 
         return db;
