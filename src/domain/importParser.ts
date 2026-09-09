@@ -119,6 +119,13 @@ export function parseEnparaSheet(rows: unknown[][]): ImportParseResult {
     });
   }
 
+  // Enpara (like most brokerage statements) lists the most recent
+  // transaction of each day first, so a row further down the sheet happened
+  // earlier. Reversing before the (stable) date sort turns that into
+  // oldest-first both across dates and within a single day — matching real
+  // trade order, which matters once transactions.ts starts walking them
+  // chronologically to compute a moving average cost.
+  transactions.reverse();
   transactions.sort((a, b) => a.date.localeCompare(b.date));
 
   return { transactions, skippedCount };

@@ -23,7 +23,14 @@ describe('parseEnparaSheet', () => {
     ];
     const result = parseEnparaSheet(rows);
     expect(result.transactions).toEqual([
-      { date: '2026-09-09', type: 'buy', symbol: 'EREGL', quantity: 1030, price: 41138.2 / 1030 },
+      {
+        date: '2026-09-09',
+        time: '00:00',
+        type: 'buy',
+        symbol: 'EREGL',
+        quantity: 1030,
+        price: 41138.2 / 1030,
+      },
     ]);
     expect(result.skippedCount).toBe(0);
   });
@@ -35,7 +42,14 @@ describe('parseEnparaSheet', () => {
     ];
     const result = parseEnparaSheet(rows);
     expect(result.transactions).toEqual([
-      { date: '2026-09-09', type: 'sell', symbol: 'ZOREN', quantity: 16658, price: 41145.26 / 16658 },
+      {
+        date: '2026-09-09',
+        time: '00:00',
+        type: 'sell',
+        symbol: 'ZOREN',
+        quantity: 16658,
+        price: 41145.26 / 16658,
+      },
     ]);
   });
 
@@ -60,6 +74,19 @@ describe('parseEnparaSheet', () => {
     ];
     const result = parseEnparaSheet(rows);
     expect(result.transactions.map((t) => t.date)).toEqual(['2026-06-01', '2026-09-09']);
+  });
+
+  test('same-day rows keep their real chronological order: Enpara lists the newest transaction of a day at the top, so within one date the bottom row happened first', () => {
+    const rows = [
+      ...HEADER_ROWS,
+      // File order (top-to-bottom) is newest-first, same as Enpara's export:
+      // this sell (entered/executed later in the day) appears above the buy
+      // that actually happened earlier that same day.
+      row('08.09.2026', 'Hisse satış', 'THYAO limit satış emri, 352 adet', '107.008,00 TL'),
+      row('08.09.2026', 'Hisse alış', 'THYAO limit alış emri, 352 adet', '106.216,00 TL'),
+    ];
+    const result = parseEnparaSheet(rows);
+    expect(result.transactions.map((t) => t.type)).toEqual(['buy', 'sell']);
   });
 
   test('handles an unparseable description by skipping the row', () => {
@@ -99,7 +126,14 @@ describe('parseEnparaSheet', () => {
     ];
     const result = parseEnparaSheet([...shiftedHeader, shiftedRow]);
     expect(result.transactions).toEqual([
-      { date: '2026-09-09', type: 'buy', symbol: 'EREGL', quantity: 1030, price: 41138.2 / 1030 },
+      {
+        date: '2026-09-09',
+        time: '00:00',
+        type: 'buy',
+        symbol: 'EREGL',
+        quantity: 1030,
+        price: 41138.2 / 1030,
+      },
     ]);
   });
 
@@ -119,7 +153,14 @@ describe('parseEnparaSheet', () => {
     ];
     const result = parseEnparaSheet(withHeaderOnly);
     expect(result.transactions).toEqual([
-      { date: '2026-09-09', type: 'buy', symbol: 'EREGL', quantity: 1030, price: 41138.2 / 1030 },
+      {
+        date: '2026-09-09',
+        time: '00:00',
+        type: 'buy',
+        symbol: 'EREGL',
+        quantity: 1030,
+        price: 41138.2 / 1030,
+      },
     ]);
   });
 
