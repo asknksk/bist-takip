@@ -43,3 +43,8 @@ export async function deleteTransaction(id: number): Promise<void> {
   const db = await getDatabase();
   await db.runAsync('DELETE FROM transactions WHERE id = ?', id);
 }
+
+export async function deleteTransactionsByStock(stockId: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM transactions WHERE stock_id = ?', stockId);
+}

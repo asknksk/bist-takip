@@ -33,3 +33,15 @@ export async function deleteStock(id: number): Promise<void> {
   }
   await db.runAsync('DELETE FROM stocks WHERE id = ?', id);
 }
+
+/**
+ * Deletes a stock AND all of its transactions. Unlike deleteStock, this
+ * does not block when transactions exist — used for an explicit "remove
+ * this stock entirely" action (e.g. a mistakenly added/imported stock)
+ * where the user has already confirmed the transaction loss.
+ */
+export async function forceDeleteStock(id: number): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM transactions WHERE stock_id = ?', id);
+  await db.runAsync('DELETE FROM stocks WHERE id = ?', id);
+}

@@ -39,6 +39,13 @@ function sumPnLInRange(daily: DailyPnL[], fromIso: string, toIsoInclusive: strin
     .reduce((acc, d) => acc + d.realizedPnL, 0);
 }
 
+/** Blanks all but ~maxVisible evenly-spaced labels so a long axis doesn't overlap. */
+function thinLabels(labels: string[], maxVisible: number): string[] {
+  if (labels.length <= maxVisible) return labels;
+  const interval = Math.ceil(labels.length / maxVisible);
+  return labels.map((label, i) => (i % interval === 0 ? label : ''));
+}
+
 export default function SummaryScreen() {
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<PortfolioRow[]>([]);
@@ -115,38 +122,46 @@ export default function SummaryScreen() {
       {rows.length > 0 && (
         <View style={styles.chartCard}>
           <Text style={styles.sectionTitle}>Hisse Bazında Kar/Zarar</Text>
-          <BarChart
-            data={{
-              labels: rows.map((r) => r.symbol),
-              datasets: [{ data: rows.map((r) => r.realizedPnL) }],
-            }}
-            width={screenWidth}
-            height={220}
-            yAxisLabel=""
-            yAxisSuffix=" TL"
-            chartConfig={chartConfig}
-            fromZero
-            style={styles.chart}
-          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <BarChart
+              data={{
+                labels: rows.map((r) => r.symbol),
+                datasets: [{ data: rows.map((r) => r.realizedPnL) }],
+              }}
+              width={Math.max(screenWidth, rows.length * 64)}
+              height={240}
+              yAxisLabel=""
+              yAxisSuffix=" TL"
+              chartConfig={chartConfig}
+              fromZero
+              verticalLabelRotation={60}
+              style={styles.chart}
+            />
+          </ScrollView>
         </View>
       )}
 
       {points.length > 1 && (
         <View style={styles.chartCard}>
           <Text style={styles.sectionTitle}>Zaman İçinde Kümülatif Kar/Zarar</Text>
-          <LineChart
-            data={{
-              labels: points.map((p) => p.date.slice(5)),
-              datasets: [{ data: points.map((p) => p.cumulativePnL) }],
-            }}
-            width={screenWidth}
-            height={220}
-            yAxisLabel=""
-            yAxisSuffix=" TL"
-            chartConfig={chartConfig}
-            style={styles.chart}
-            bezier
-          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <LineChart
+              data={{
+                labels: thinLabels(
+                  points.map((p) => p.date.slice(5)),
+                  6
+                ),
+                datasets: [{ data: points.map((p) => p.cumulativePnL) }],
+              }}
+              width={Math.max(screenWidth, points.length * 48)}
+              height={220}
+              yAxisLabel=""
+              yAxisSuffix=" TL"
+              chartConfig={chartConfig}
+              style={styles.chart}
+              bezier
+            />
+          </ScrollView>
         </View>
       )}
 
