@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerChangeEvent } from '@react-native-community/datetimepicker';
 import StockPicker from '../components/StockPicker';
 import ImportExcelModal from '../components/ImportExcelModal';
 import { showAlert } from '../components/AppAlert';
@@ -46,12 +46,15 @@ export default function AddTransactionScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
 
-  function handleDateChange(event: DateTimePickerEvent, selected?: Date) {
+  function handleDateValueChange(event: DateTimePickerChangeEvent, selected: Date) {
     if (Platform.OS === 'android') {
       setShowDatePicker(false);
     }
-    if (event.type === 'dismissed') return;
-    if (selected) setDateObj(selected);
+    setDateObj(selected);
+  }
+
+  function handleDatePickerDismiss() {
+    setShowDatePicker(false);
   }
 
   const reloadStocks = useCallback(() => {
@@ -211,7 +214,8 @@ export default function AddTransactionScreen() {
               mode="date"
               display={Platform.OS === 'ios' ? 'inline' : 'default'}
               maximumDate={new Date()}
-              onChange={handleDateChange}
+              onValueChange={handleDateValueChange}
+              onDismiss={handleDatePickerDismiss}
             />
             {Platform.OS === 'ios' && (
               <Pressable style={styles.iosPickerDoneButton} onPress={() => setShowDatePicker(false)}>
