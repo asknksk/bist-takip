@@ -103,6 +103,26 @@ describe('parseEnparaSheet', () => {
     ]);
   });
 
+  test('finds the header row with no leading metadata rows at all (e.g. user deleted them)', () => {
+    const rows = [
+      row('09.09.2026', 'Hisse alış', 'EREGL limit alış emri, 1030 adet', '-41.138,20 TL'),
+    ];
+    // No HEADER_ROWS prepended, and no header row present either — nothing
+    // to anchor column positions to, so this must yield no transactions...
+    expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0 });
+
+    // ...but once the header row itself is present (with or without the
+    // metadata rows above it), parsing succeeds the same way either way.
+    const withHeaderOnly = [
+      ['', 'Tarih', '', 'İşlem tipi', '', '', '', '', 'Açıklama', '', '', '', '', 'İşlem Tutarı'],
+      row('09.09.2026', 'Hisse alış', 'EREGL limit alış emri, 1030 adet', '-41.138,20 TL'),
+    ];
+    const result = parseEnparaSheet(withHeaderOnly);
+    expect(result.transactions).toEqual([
+      { date: '2026-09-09', type: 'buy', symbol: 'EREGL', quantity: 1030, price: 41138.2 / 1030 },
+    ]);
+  });
+
   test('returns no transactions and no false skips when the header row cannot be found', () => {
     const rows = [['this', 'is', 'not', 'a', 'recognizable', 'enpara', 'export']];
     expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0 });
