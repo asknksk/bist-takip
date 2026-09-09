@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as XLSX from 'xlsx';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from './AppAlert';
@@ -54,10 +53,9 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
       if (result.canceled || result.assets.length === 0) return;
 
       const asset = result.assets[0];
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const workbook = XLSX.read(base64, { type: 'base64' });
+      const response = await fetch(asset.uri);
+      const arrayBuffer = await response.arrayBuffer();
+      const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, raw: false });
 
@@ -72,7 +70,12 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
       setSkippedCount(skipped);
       setStep('preview');
     } catch (error) {
-      showAlert('Hata', 'Dosya okunamadı. Lütfen Enpara.com hesap hareketleri (.xls) dosyası seçtiğinden emin ol.');
+      console.error('[ImportExcelModal] file read/parse failed:', error);
+      const detail = error instanceof Error ? error.message : String(error);
+      showAlert(
+        'Hata',
+        `Dosya okunamadı. Lütfen Enpara.com hesap hareketleri (.xls) dosyası seçtiğinden emin ol.\n\n(Ayrıntı: ${detail})`
+      );
     }
   }
 
