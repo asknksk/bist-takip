@@ -9,6 +9,7 @@ import { deleteTransaction, getAllTransactions } from '../db/transactionsRepo';
 import { calculateDailyRealizedPnL } from '../domain/calculations';
 import { Stock, Transaction } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
+import { formatCurrency } from '../utils/format';
 
 interface DayGroup {
   date: string;
@@ -159,7 +160,7 @@ export default function HistoryScreen() {
                     color={isProfit ? colors.profit : colors.loss}
                   />
                   <Text style={[styles.dayPnlText, { color: isProfit ? colors.profit : colors.loss }]}>
-                    {group.realizedPnL.toFixed(2)} TL
+                    {formatCurrency(group.realizedPnL)} TL
                   </Text>
                 </View>
               )}
@@ -185,7 +186,7 @@ export default function HistoryScreen() {
                           {stock ? `${stock.symbol} — ${stock.name}` : 'Bilinmeyen hisse'}
                         </Text>
                         <Text style={styles.detail}>
-                          {isBuy ? 'Alım' : 'Satım'} · {item.quantity} adet · {item.price.toFixed(2)} TL
+                          {isBuy ? 'Alım' : 'Satım'} · {item.quantity} adet · {formatCurrency(item.price)} TL
                         </Text>
                       </View>
                       <Pressable

@@ -11,6 +11,7 @@ import { calculatePortfolio } from '../domain/calculations';
 import { PortfolioRow } from '../domain/types';
 import { fetchCurrentPrices } from '../services/priceService';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
+import { formatCurrency } from '../utils/format';
 
 // undefined = still fetching, null = fetch failed, number = last fetched price
 type PriceMap = Map<string, number | null>;
@@ -154,7 +155,7 @@ export default function PortfolioScreen() {
               <Text style={styles.lastUpdatedText}>Güncelleme: {formatTime(lastUpdated)}</Text>
             )}
           </View>
-          <Text style={styles.totalValue}>{totalValue.toFixed(2)} TL</Text>
+          <Text style={styles.totalValue}>{formatCurrency(totalValue)} TL</Text>
           {missingPriceCount > 0 && (
             <Text style={styles.totalHint}>
               {missingPriceCount} hisse için fiyat alınamadı, toplama dahil edilmedi.
@@ -275,7 +276,7 @@ function PortfolioCard({
         </View>
         <View>
           <Text style={styles.metricLabel}>Ortalama maliyet</Text>
-          <Text style={styles.metricValue}>{item.avgBuyPrice.toFixed(2)} TL</Text>
+          <Text style={styles.metricValue}>{formatCurrency(item.avgBuyPrice)} TL</Text>
         </View>
         {item.heldQuantity > 0 && (
           <View>
@@ -285,7 +286,7 @@ function PortfolioCard({
             ) : currentPrice === null ? (
               <Text style={styles.metricValueMuted}>alınamadı</Text>
             ) : (
-              <Text style={styles.metricValue}>{currentPrice.toFixed(2)} TL</Text>
+              <Text style={styles.metricValue}>{formatCurrency(currentPrice)} TL</Text>
             )}
           </View>
         )}
@@ -303,7 +304,7 @@ function PortfolioCard({
           <Text
             style={[styles.pnlText, { color: isUnrealizedProfit ? colors.profit : colors.loss }]}
           >
-            Tahmini K/Z: {unrealizedPnL.toFixed(2)} TL
+            Tahmini K/Z: {formatCurrency(unrealizedPnL)} TL
           </Text>
         </View>
       )}
@@ -324,7 +325,7 @@ function PortfolioCard({
           <Text
             style={[styles.pnlText, { color: isRealizedProfit ? colors.profit : colors.loss }]}
           >
-            Satılan {item.soldQuantity} adetten gerçekleşen K/Z: {item.realizedPnL.toFixed(2)} TL
+            Satılan {item.soldQuantity} adetten gerçekleşen K/Z: {formatCurrency(item.realizedPnL)} TL
           </Text>
         </View>
       ) : (

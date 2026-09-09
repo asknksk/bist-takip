@@ -9,6 +9,7 @@ import { calculatePortfolioRow } from '../domain/calculations';
 import { PortfolioRow, Stock, Transaction } from '../domain/types';
 import { fetchCurrentPrice } from '../services/priceService';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
+import { formatCurrency } from '../utils/format';
 
 interface StockDetailModalProps {
   visible: boolean;
@@ -126,8 +127,8 @@ export default function StockDetailModal({
                   <SummaryItem label="Elde tutulan" value={String(row.heldQuantity)} />
                   <SummaryItem
                     label="Ortalama maliyet"
-                    value={`${row.avgBuyPrice.toFixed(2)} TL`}
-                    hint={`Toplam: ${(row.heldQuantity * row.avgBuyPrice).toFixed(2)} TL`}
+                    value={`${formatCurrency(row.avgBuyPrice)} TL`}
+                    hint={`Toplam: ${formatCurrency(row.heldQuantity * row.avgBuyPrice)} TL`}
                   />
                 </View>
                 {row.heldQuantity > 0 && (
@@ -139,13 +140,13 @@ export default function StockDetailModal({
                           ? '...'
                           : currentPrice === null
                             ? 'alınamadı'
-                            : `${currentPrice.toFixed(2)} TL`
+                            : `${formatCurrency(currentPrice)} TL`
                       }
                     />
                     {unrealizedPnL !== null && (
                       <SummaryItem
                         label="Tahmini K/Z"
-                        value={`${unrealizedPnL.toFixed(2)} TL`}
+                        value={`${formatCurrency(unrealizedPnL)} TL`}
                         color={unrealizedPnL >= 0 ? colors.profit : colors.loss}
                       />
                     )}
@@ -157,7 +158,7 @@ export default function StockDetailModal({
                       <View style={styles.summaryRow}>
                         <SummaryItem
                           label={`Seçilen aralıkta satılan ${rangeRealized.soldQuantity} adetten K/Z`}
-                          value={`${rangeRealized.realizedPnL.toFixed(2)} TL`}
+                          value={`${formatCurrency(rangeRealized.realizedPnL)} TL`}
                           color={rangeRealized.realizedPnL >= 0 ? colors.profit : colors.loss}
                         />
                       </View>
@@ -166,7 +167,7 @@ export default function StockDetailModal({
                       <View style={styles.summaryRow}>
                         <SummaryItem
                           label={`Satılan ${row.soldQuantity} adetten K/Z`}
-                          value={`${row.realizedPnL.toFixed(2)} TL`}
+                          value={`${formatCurrency(row.realizedPnL)} TL`}
                           color={row.realizedPnL >= 0 ? colors.profit : colors.loss}
                         />
                       </View>
@@ -195,7 +196,7 @@ export default function StockDetailModal({
                   </View>
                   <View style={styles.txBody}>
                     <Text style={styles.txDetail}>
-                      {isBuy ? 'Alım' : 'Satım'} · {t.quantity} adet · {t.price.toFixed(2)} TL
+                      {isBuy ? 'Alım' : 'Satım'} · {t.quantity} adet · {formatCurrency(t.price)} TL
                     </Text>
                     <Text style={styles.txDate}>{t.date}</Text>
                   </View>

@@ -17,6 +17,7 @@ import {
 } from '../domain/calculations';
 import { DailyPnL, MonthlyPnL, PortfolioRow, Stock, StockPnLInRange, Transaction } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
+import { formatCurrency } from '../utils/format';
 
 function toIsoDate(d: Date): string {
   const year = d.getFullYear();
@@ -199,7 +200,7 @@ export default function SummaryScreen() {
             color={isProfit ? colors.profit : colors.loss}
           />
           <Text style={[styles.totalValue, { color: isProfit ? colors.profit : colors.loss }]}>
-            {total.toFixed(2)} TL
+            {formatCurrency(total)} TL
           </Text>
         </View>
       </View>
@@ -280,7 +281,7 @@ function QuickStatCard({ label, value }: { label: string; value: number }) {
           color={isProfit ? colors.profit : colors.loss}
         />
         <Text style={[styles.quickStatValue, { color: isProfit ? colors.profit : colors.loss }]}>
-          {value.toFixed(2)} TL
+          {formatCurrency(value)} TL
         </Text>
       </View>
     </View>
@@ -326,7 +327,7 @@ function BarListRow({
       </View>
       <Text style={[styles.barValue, { color: barColor }]} numberOfLines={1}>
         {isProfit ? '+' : ''}
-        {value.toFixed(0)} TL
+        {formatCurrency(value, 0)} TL
       </Text>
       {onPress && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
     </Container>
