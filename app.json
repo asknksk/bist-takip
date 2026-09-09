@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "scaffold-tmp",
-    "slug": "scaffold-tmp",
+    "name": "Hisse Takip",
+    "slug": "hisse-takip",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.hissetakip.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
