@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,11 +13,18 @@ import { colors, radius, spacing, touchTarget, typography } from '../theme/theme
 interface StockDetailModalProps {
   visible: boolean;
   stockId: number | null;
+  dateRange?: { from: string; to: string } | null;
   onClose: () => void;
   onChanged: () => void;
 }
 
-export default function StockDetailModal({ visible, stockId, onClose, onChanged }: StockDetailModalProps) {
+export default function StockDetailModal({
+  visible,
+  stockId,
+  dateRange,
+  onClose,
+  onChanged,
+}: StockDetailModalProps) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [stock, setStock] = useState<Stock | null>(null);
@@ -79,6 +86,24 @@ export default function StockDetailModal({ visible, stockId, onClose, onChanged 
       ? row.heldQuantity * (currentPrice - row.avgBuyPrice)
       : null;
 
+  const displayedTransactions = useMemo(() => {
+    if (!dateRange) return transactions;
+    return transactions.filter((t) => t.date >= dateRange.from && t.date <= dateRange.to);
+  }, [transactions, dateRange]);
+
+  const rangeRealized = useMemo(() => {
+    if (!dateRange || !row) return null;
+    const rangeSells = transactions.filter(
+      (t) => t.type === 'sell' && t.date >= dateRange.from && t.date <= dateRange.to
+    );
+    const soldQuantity = rangeSells.reduce((acc, t) => acc + t.quantity, 0);
+    const realizedPnL = rangeSells.reduce(
+      (acc, t) => acc + t.quantity * (t.price - row.avgBuyPrice),
+      0
+    );
+    return { soldQuantity, realizedPnL };
+  }, [dateRange, transactions, row]);
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom }]}>
@@ -126,20 +151,38 @@ export default function StockDetailModal({ visible, stockId, onClose, onChanged 
                     )}
                   </View>
                 )}
-                {row.soldQuantity > 0 && (
-                  <View style={styles.summaryRow}>
-                    <SummaryItem
-                      label={`Satılan ${row.soldQuantity} adetten K/Z`}
-                      value={`${row.realizedPnL.toFixed(2)} TL`}
-                      color={row.realizedPnL >= 0 ? colors.profit : colors.loss}
-                    />
-                  </View>
-                )}
+                {dateRange
+                  ? rangeRealized &&
+                    rangeRealized.soldQuantity > 0 && (
+                      <View style={styles.summaryRow}>
+                        <SummaryItem
+                          label={`Seçilen aralıkta satılan ${rangeRealized.soldQuantity} adetten K/Z`}
+                          value={`${rangeRealized.realizedPnL.toFixed(2)} TL`}
+                          color={rangeRealized.realizedPnL >= 0 ? colors.profit : colors.loss}
+                        />
+                      </View>
+                    )
+                  : row.soldQuantity > 0 && (
+                      <View style={styles.summaryRow}>
+                        <SummaryItem
+                          label={`Satılan ${row.soldQuantity} adetten K/Z`}
+                          value={`${row.realizedPnL.toFixed(2)} TL`}
+                          color={row.realizedPnL >= 0 ? colors.profit : colors.loss}
+                        />
+                      </View>
+                    )}
               </View>
             )}
 
-            <Text style={styles.sectionTitle}>İşlem Geçmişi ({transactions.length})</Text>
-            {transactions.map((t) => {
+            <Text style={styles.sectionTitle}>
+              {dateRange
+                ? `İşlem Geçmişi — Seçilen Aralık (${displayedTransactions.length})`
+                : `İşlem Geçmişi (${displayedTransactions.length})`}
+            </Text>
+            {dateRange && displayedTransactions.length === 0 && (
+              <Text style={styles.emptyRangeText}>Bu tarih aralığında işlem yok.</Text>
+            )}
+            {displayedTransactions.map((t) => {
               const isBuy = t.type === 'buy';
               return (
                 <View key={t.id} style={styles.txRow}>
@@ -243,6 +286,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: typography.fontSemiBold,
     fontSize: typography.body.fontSize,
+    marginBottom: spacing.sm,
+  },
+  emptyRangeText: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.label.fontSize,
     marginBottom: spacing.sm,
   },
   txRow: {

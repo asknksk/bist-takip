@@ -91,12 +91,18 @@ export default function SummaryScreen() {
     }, [load])
   );
 
+  const activeDateRange = useMemo(() => {
+    if (!isFiltered) return null;
+    return {
+      from: filterFrom ? toIsoDate(filterFrom) : '',
+      to: filterTo ? toIsoDate(filterTo) : '9999-12-31',
+    };
+  }, [isFiltered, filterFrom, filterTo]);
+
   const filteredStockRows: StockPnLInRange[] = useMemo(() => {
-    if (!isFiltered) return [];
-    const fromIso = filterFrom ? toIsoDate(filterFrom) : '';
-    const toIso = filterTo ? toIsoDate(filterTo) : '9999-12-31';
-    return calculateRealizedPnLByStockInRange(stocks, transactions, fromIso, toIso);
-  }, [isFiltered, filterFrom, filterTo, stocks, transactions]);
+    if (!activeDateRange) return [];
+    return calculateRealizedPnLByStockInRange(stocks, transactions, activeDateRange.from, activeDateRange.to);
+  }, [activeDateRange, stocks, transactions]);
 
   const total = isFiltered
     ? filteredStockRows.reduce((acc, r) => acc + r.realizedPnL, 0)
@@ -274,6 +280,7 @@ export default function SummaryScreen() {
       <StockDetailModal
         visible={selectedStockId !== null}
         stockId={selectedStockId}
+        dateRange={activeDateRange}
         onClose={() => setSelectedStockId(null)}
         onChanged={load}
       />
