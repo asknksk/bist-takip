@@ -15,6 +15,10 @@ import { colors, radius, spacing, touchTarget, typography } from '../theme/theme
 // undefined = still fetching, null = fetch failed, number = last fetched price
 type PriceMap = Map<string, number | null>;
 
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<PortfolioRow[]>([]);
@@ -24,6 +28,7 @@ export default function PortfolioScreen() {
   const [pricesLoading, setPricesLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sellItem, setSellItem] = useState<PortfolioRow | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +45,7 @@ export default function PortfolioScreen() {
         const priceMap = await fetchCurrentPrices(openSymbols);
         setPrices(priceMap);
         setPricesLoading(false);
+        setLastUpdated(new Date());
       } else {
         setPrices(new Map());
       }
@@ -66,6 +72,20 @@ export default function PortfolioScreen() {
     const closed = rows.filter((r) => r.heldQuantity <= 0);
     return { openRows: open, closedRows: closed };
   }, [rows]);
+
+  const { totalValue, missingPriceCount } = useMemo(() => {
+    let total = 0;
+    let missing = 0;
+    for (const r of openRows) {
+      const price = prices.get(r.symbol);
+      if (typeof price === 'number') {
+        total += r.heldQuantity * price;
+      } else {
+        missing += 1;
+      }
+    }
+    return { totalValue: total, missingPriceCount: missing };
+  }, [openRows, prices]);
 
   function handleDeleteStock(item: PortfolioRow) {
     showAlert(
@@ -127,10 +147,20 @@ export default function PortfolioScreen() {
       }
     >
       {openRows.length > 0 && (
-        <Text style={styles.priceDisclaimer}>
-          Güncel fiyatlar ücretsiz, gecikmeli bir kaynaktan alınır ve tahminidir — resmi/anlık veri
-          değildir.
-        </Text>
+        <View style={styles.totalCard}>
+          <View style={styles.totalHeaderRow}>
+            <Text style={styles.totalLabel}>Toplam Portföy Değeri</Text>
+            {lastUpdated && (
+              <Text style={styles.lastUpdatedText}>Güncelleme: {formatTime(lastUpdated)}</Text>
+            )}
+          </View>
+          <Text style={styles.totalValue}>{totalValue.toFixed(2)} TL</Text>
+          {missingPriceCount > 0 && (
+            <Text style={styles.totalHint}>
+              {missingPriceCount} hisse için fiyat alınamadı, toplama dahil edilmedi.
+            </Text>
+          )}
+        </View>
       )}
 
       {openRows.map((item) => (
@@ -273,7 +303,7 @@ function PortfolioCard({
           <Text
             style={[styles.pnlText, { color: isUnrealizedProfit ? colors.profit : colors.loss }]}
           >
-            Tahmini K/Z (gecikmeli): {unrealizedPnL.toFixed(2)} TL
+            Tahmini K/Z: {unrealizedPnL.toFixed(2)} TL
           </Text>
         </View>
       )}
@@ -327,11 +357,40 @@ const styles = StyleSheet.create({
     fontSize: typography.label.fontSize,
     textAlign: 'center',
   },
-  priceDisclaimer: {
+  totalCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  totalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  totalLabel: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.label.fontSize,
+  },
+  lastUpdatedText: {
     color: colors.textMuted,
     fontFamily: typography.fontRegular,
     fontSize: typography.caption.fontSize,
-    marginBottom: spacing.md,
+  },
+  totalValue: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontBold,
+    fontSize: typography.display.fontSize,
+  },
+  totalHint: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+    marginTop: spacing.xs,
   },
   list: { padding: spacing.md, backgroundColor: colors.background },
   card: {

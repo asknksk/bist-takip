@@ -119,7 +119,7 @@ export default function StockDetailModal({ visible, stockId, onClose, onChanged 
                     />
                     {unrealizedPnL !== null && (
                       <SummaryItem
-                        label="Tahmini K/Z (gecikmeli)"
+                        label="Tahmini K/Z"
                         value={`${unrealizedPnL.toFixed(2)} TL`}
                         color={unrealizedPnL >= 0 ? colors.profit : colors.loss}
                       />
