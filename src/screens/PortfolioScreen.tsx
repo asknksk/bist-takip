@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../components/AppAlert';
 import QuickSellModal from '../components/QuickSellModal';
-import { forceDeleteStock, getAllStocks } from '../db/stocksRepo';
+import { forceDeleteStock, getAllStocks, resetAllData } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import { calculatePortfolio } from '../domain/calculations';
 import { PortfolioRow } from '../domain/types';
@@ -22,6 +22,7 @@ function formatTime(d: Date): string {
 
 export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const [rows, setRows] = useState<PortfolioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
@@ -87,6 +88,58 @@ export default function PortfolioScreen() {
     }
     return { totalValue: total, missingPriceCount: missing };
   }, [openRows, prices]);
+
+  function handleDeleteAllData() {
+    showAlert(
+      'Tüm Verileri Sil',
+      'Tüm işlem kayıtların ve eklediğin özel hisseler kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Hepsini Sil',
+          style: 'destructive',
+          onPress: () => {
+            showAlert(
+              'Emin misin?',
+              'Bu son bir onaydır — tüm portföy geçmişin kalıcı olarak silinecek.',
+              [
+                { text: 'Vazgeç', style: 'cancel' },
+                {
+                  text: 'Evet, Sil',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await resetAllData();
+                      load();
+                    } catch (error) {
+                      showAlert('Hata', 'Veriler silinemedi. Lütfen tekrar deneyin.');
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  }
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={handleDeleteAllData}
+          accessibilityRole="button"
+          accessibilityLabel="Tüm verileri sil"
+          hitSlop={8}
+          style={styles.headerDeleteButton}
+        >
+          <Ionicons name="trash-outline" size={20} color={colors.destructive} />
+        </Pressable>
+      ),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
 
   function handleDeleteStock(item: PortfolioRow) {
     showAlert(
@@ -338,6 +391,13 @@ function PortfolioCard({
 }
 
 const styles = StyleSheet.create({
+  headerDeleteButton: {
+    width: touchTarget.minSize,
+    height: touchTarget.minSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.xs,
+  },
   empty: {
     flex: 1,
     alignItems: 'center',

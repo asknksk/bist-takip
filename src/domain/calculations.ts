@@ -13,7 +13,12 @@ function sum(nums: number[]): number {
 }
 
 function sortChronologically(transactions: Transaction[]): Transaction[] {
-  return transactions.slice().sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  return transactions
+    .slice()
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) || a.time.localeCompare(b.time) || a.id - b.id
+    );
 }
 
 export interface SellPnL {

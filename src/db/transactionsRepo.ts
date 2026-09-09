@@ -6,16 +6,18 @@ export async function addTransaction(
   type: TransactionType,
   quantity: number,
   price: number,
-  date: string
+  date: string,
+  time: string
 ): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
-    'INSERT INTO transactions (stock_id, type, quantity, price, date) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO transactions (stock_id, type, quantity, price, date, time) VALUES (?, ?, ?, ?, ?, ?)',
     stockId,
     type,
     quantity,
     price,
-    date
+    date,
+    time
   );
 }
 
@@ -28,7 +30,10 @@ export async function getAllTransactions(): Promise<Transaction[]> {
     quantity: number;
     price: number;
     date: string;
-  }>('SELECT id, stock_id, type, quantity, price, date FROM transactions ORDER BY date DESC, id DESC');
+    time: string;
+  }>(
+    'SELECT id, stock_id, type, quantity, price, date, time FROM transactions ORDER BY date DESC, time DESC, id DESC'
+  );
   return rows.map((r) => ({
     id: r.id,
     stockId: r.stock_id,
@@ -36,6 +41,7 @@ export async function getAllTransactions(): Promise<Transaction[]> {
     quantity: r.quantity,
     price: r.price,
     date: r.date,
+    time: r.time,
   }));
 }
 
@@ -47,4 +53,9 @@ export async function deleteTransaction(id: number): Promise<void> {
 export async function deleteTransactionsByStock(stockId: number): Promise<void> {
   const db = await getDatabase();
   await db.runAsync('DELETE FROM transactions WHERE stock_id = ?', stockId);
+}
+
+export async function deleteAllTransactions(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM transactions');
 }

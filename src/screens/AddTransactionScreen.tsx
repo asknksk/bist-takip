@@ -36,6 +36,14 @@ function formatDisplayDate(d: Date): string {
   return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
+function toHHMM(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatDisplayTime(d: Date): string {
+  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function AddTransactionScreen() {
   const insets = useSafeAreaInsets();
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -45,6 +53,8 @@ export default function AddTransactionScreen() {
   const [price, setPrice] = useState('');
   const [dateObj, setDateObj] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [timeObj, setTimeObj] = useState(new Date());
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [priceLoading, setPriceLoading] = useState(false);
@@ -81,6 +91,17 @@ export default function AddTransactionScreen() {
     setShowDatePicker(false);
   }
 
+  function handleTimeValueChange(event: DateTimePickerChangeEvent, selected: Date) {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+    setTimeObj(selected);
+  }
+
+  function handleTimePickerDismiss() {
+    setShowTimePicker(false);
+  }
+
   const reloadStocks = useCallback(() => {
     getAllStocks()
       .then(setStocks)
@@ -113,6 +134,7 @@ export default function AddTransactionScreen() {
     }
 
     const date = toIsoDate(dateObj);
+    const time = toHHMM(timeObj);
 
     setSubmitting(true);
     try {
@@ -130,7 +152,7 @@ export default function AddTransactionScreen() {
         }
       }
 
-      await addTransaction(stockId, type, quantityNum, priceNum, date);
+      await addTransaction(stockId, type, quantityNum, priceNum, date, time);
       showAlert('Kaydedildi', 'İşlem başarıyla eklendi.');
       setQuantity('');
       setPrice('');
@@ -242,6 +264,38 @@ export default function AddTransactionScreen() {
             />
             {Platform.OS === 'ios' && (
               <Pressable style={styles.iosPickerDoneButton} onPress={() => setShowDatePicker(false)}>
+                <Text style={styles.iosPickerDoneText}>Tamam</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+
+        <Text style={styles.label}>Saat</Text>
+        <Pressable
+          style={styles.dateInput}
+          onPress={() => setShowTimePicker(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Saat seç"
+        >
+          <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
+          <Text style={styles.dateInputText}>{formatDisplayTime(timeObj)}</Text>
+        </Pressable>
+        <Text style={styles.priceHint}>
+          Aynı güne ait birden fazla işlemin sırası saate göre belirlenir — geçmişe dönük işlem
+          girerken doğru sırayı korumak için saat de önemlidir.
+        </Text>
+        {showTimePicker && (
+          <View style={Platform.OS === 'ios' ? styles.iosPickerCard : undefined}>
+            <DateTimePicker
+              value={timeObj}
+              mode="time"
+              is24Hour
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onValueChange={handleTimeValueChange}
+              onDismiss={handleTimePickerDismiss}
+            />
+            {Platform.OS === 'ios' && (
+              <Pressable style={styles.iosPickerDoneButton} onPress={() => setShowTimePicker(false)}>
                 <Text style={styles.iosPickerDoneText}>Tamam</Text>
               </Pressable>
             )}

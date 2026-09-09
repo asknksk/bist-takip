@@ -22,6 +22,7 @@ function tx(overrides: Partial<Transaction>): Transaction {
     quantity: overrides.quantity ?? 10,
     price: overrides.price ?? 100,
     date: overrides.date ?? '2026-01-01',
+    time: overrides.time ?? '00:00',
   };
 }
 
@@ -120,6 +121,24 @@ describe('calculatePortfolioRow', () => {
     // Must be 20 (the new lot's price), not (100*10 + 50*20) / 150 = 13.33.
     expect(row.avgBuyPrice).toBe(20);
     expect(row.realizedPnL).toBeCloseTo(100 * (12 - 10), 5);
+  });
+
+  test('same-day buy and sell are ordered by time, not by insertion id, when a sell is recorded before its earlier same-day buy', () => {
+    // Regression: a user bought 352 shares then sold all 352 the same day,
+    // but entered the sell into the app first (e.g. via the quick-sell
+    // button) and only afterward logged the buy — so the sell got the lower
+    // database id despite happening second. Sorting by id alone processed
+    // the sell against zero holdings (treating it as a short sale against
+    // avgBuyPrice=0), leaving the position looking still fully held with a
+    // wildly inflated "realized" P&L. Sorting by date+time fixes this.
+    const txs: Transaction[] = [
+      tx({ id: 1, type: 'sell', quantity: 352, price: 304.0, date: '2026-09-08', time: '15:30' }),
+      tx({ id: 2, type: 'buy', quantity: 352, price: 301.75, date: '2026-09-08', time: '10:00' }),
+    ];
+    const row = calculatePortfolioRow(stock, txs);
+    expect(row.heldQuantity).toBe(0);
+    expect(row.avgBuyPrice).toBe(0);
+    expect(row.realizedPnL).toBeCloseTo(352 * (304.0 - 301.75), 5);
   });
 });
 

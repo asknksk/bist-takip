@@ -14,6 +14,11 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function nowHHMM(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 interface QuickSellModalProps {
   visible: boolean;
   item: PortfolioRow | null;
@@ -68,7 +73,7 @@ export default function QuickSellModal({ visible, item, onClose, onSold }: Quick
 
     setSubmitting(true);
     try {
-      await addTransaction(item.stockId, 'sell', quantityNum, priceNum, todayIso());
+      await addTransaction(item.stockId, 'sell', quantityNum, priceNum, todayIso(), nowHHMM());
       onSold();
       onClose();
     } catch (error) {

@@ -45,3 +45,14 @@ export async function forceDeleteStock(id: number): Promise<void> {
   await db.runAsync('DELETE FROM transactions WHERE stock_id = ?', id);
   await db.runAsync('DELETE FROM stocks WHERE id = ?', id);
 }
+
+/**
+ * Wipes every transaction and every custom (user-added) stock, leaving the
+ * built-in BIST stock list in place so the app is immediately usable again —
+ * a full "start over" reset, not a partial one.
+ */
+export async function resetAllData(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM transactions');
+  await db.runAsync('DELETE FROM stocks WHERE is_custom = 1');
+}

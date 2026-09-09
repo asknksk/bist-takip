@@ -1,5 +1,6 @@
 export interface ParsedImportTransaction {
   date: string; // YYYY-MM-DD
+  time: string; // "HH:MM" — the export has no time, so this is a fixed placeholder
   type: 'buy' | 'sell';
   symbol: string;
   quantity: number;
@@ -110,6 +111,7 @@ export function parseEnparaSheet(rows: unknown[][]): ImportParseResult {
 
     transactions.push({
       date: dateIso,
+      time: '00:00',
       type: orderType === 'Hisse alış' ? 'buy' : 'sell',
       symbol,
       quantity,

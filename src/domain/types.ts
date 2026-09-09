@@ -14,6 +14,7 @@ export interface Transaction {
   quantity: number;
   price: number;
   date: string; // ISO date string, e.g. "2026-09-09"
+  time: string; // "HH:MM", 24-hour — breaks ties between same-day transactions
 }
 
 export interface PortfolioRow {

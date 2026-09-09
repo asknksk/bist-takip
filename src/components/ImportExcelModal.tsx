@@ -116,7 +116,7 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
       const stock = bySymbol.get(t.symbol);
       if (stock) {
         try {
-          await addTransaction(stock.id, t.type, t.quantity, t.price, t.date);
+          await addTransaction(stock.id, t.type, t.quantity, t.price, t.date, t.time);
         } catch {
           failed += 1;
         }

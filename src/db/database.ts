@@ -25,6 +25,16 @@ export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
           );
         `);
 
+        // Migration: transactions originally had no time-of-day, so same-day
+        // trades were ordered by insertion id — wrong whenever a trade was
+        // entered out of order (e.g. a sell logged before its earlier same-day
+        // buy). Add an explicit "time" column so ordering reflects what the
+        // user says happened, not what order they typed it in.
+        const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(transactions)');
+        if (!columns.some((c) => c.name === 'time')) {
+          await db.execAsync("ALTER TABLE transactions ADD COLUMN time TEXT NOT NULL DEFAULT '00:00'");
+        }
+
         // Always run (not gated on an empty check): INSERT OR IGNORE is a
         // no-op for symbols already present, so this is cheap and also
         // backfills any stocks added to BIST_STOCKS after a device already
