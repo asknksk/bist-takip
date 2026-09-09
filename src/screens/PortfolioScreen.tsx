@@ -8,23 +8,42 @@ import { forceDeleteStock, getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import { calculatePortfolio } from '../domain/calculations';
 import { PortfolioRow } from '../domain/types';
+import { fetchCurrentPrices } from '../services/priceService';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
+
+// undefined = still fetching, null = fetch failed, number = last fetched price
+type PriceMap = Map<string, number | null>;
 
 export default function PortfolioScreen() {
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<PortfolioRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showClosed, setShowClosed] = useState(false);
+  const [prices, setPrices] = useState<PriceMap>(new Map());
+  const [pricesLoading, setPricesLoading] = useState(false);
 
   const load = useCallback(() => {
     Promise.all([getAllStocks(), getAllTransactions()])
       .then(([stocks, txs]) => {
-        setRows(calculatePortfolio(stocks, txs));
+        const portfolio = calculatePortfolio(stocks, txs);
+        setRows(portfolio);
+        setLoading(false);
+
+        const openSymbols = portfolio.filter((r) => r.heldQuantity > 0).map((r) => r.symbol);
+        if (openSymbols.length > 0) {
+          setPrices(new Map());
+          setPricesLoading(true);
+          fetchCurrentPrices(openSymbols)
+            .then(setPrices)
+            .finally(() => setPricesLoading(false));
+        } else {
+          setPrices(new Map());
+        }
       })
       .catch(() => {
         showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      });
   }, []);
 
   useFocusEffect(
@@ -81,10 +100,27 @@ export default function PortfolioScreen() {
     );
   }
 
+  function priceStateFor(symbol: string): number | null | undefined {
+    if (!prices.has(symbol)) return pricesLoading ? undefined : null;
+    return prices.get(symbol);
+  }
+
   return (
     <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.lg }]}>
+      {openRows.length > 0 && (
+        <Text style={styles.priceDisclaimer}>
+          Güncel fiyatlar ücretsiz, gecikmeli bir kaynaktan alınır ve tahminidir — resmi/anlık veri
+          değildir.
+        </Text>
+      )}
+
       {openRows.map((item) => (
-        <PortfolioCard key={item.stockId} item={item} onDelete={() => handleDeleteStock(item)} />
+        <PortfolioCard
+          key={item.stockId}
+          item={item}
+          currentPrice={priceStateFor(item.symbol)}
+          onDelete={() => handleDeleteStock(item)}
+        />
       ))}
 
       {openRows.length === 0 && closedRows.length > 0 && (
@@ -110,7 +146,12 @@ export default function PortfolioScreen() {
           </Pressable>
           {showClosed &&
             closedRows.map((item) => (
-              <PortfolioCard key={item.stockId} item={item} onDelete={() => handleDeleteStock(item)} />
+              <PortfolioCard
+                key={item.stockId}
+                item={item}
+                currentPrice={undefined}
+                onDelete={() => handleDeleteStock(item)}
+              />
             ))}
         </View>
       )}
@@ -118,8 +159,22 @@ export default function PortfolioScreen() {
   );
 }
 
-function PortfolioCard({ item, onDelete }: { item: PortfolioRow; onDelete: () => void }) {
-  const isProfit = item.realizedPnL >= 0;
+function PortfolioCard({
+  item,
+  currentPrice,
+  onDelete,
+}: {
+  item: PortfolioRow;
+  currentPrice: number | null | undefined;
+  onDelete: () => void;
+}) {
+  const isRealizedProfit = item.realizedPnL >= 0;
+  const unrealizedPnL =
+    item.heldQuantity > 0 && typeof currentPrice === 'number'
+      ? item.heldQuantity * (currentPrice - item.avgBuyPrice)
+      : null;
+  const isUnrealizedProfit = (unrealizedPnL ?? 0) >= 0;
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -152,28 +207,60 @@ function PortfolioCard({ item, onDelete }: { item: PortfolioRow; onDelete: () =>
           <Text style={styles.metricLabel}>Ortalama maliyet</Text>
           <Text style={styles.metricValue}>{item.avgBuyPrice.toFixed(2)} TL</Text>
         </View>
+        {item.heldQuantity > 0 && (
+          <View>
+            <Text style={styles.metricLabel}>Güncel fiyat</Text>
+            {currentPrice === undefined ? (
+              <ActivityIndicator size="small" color={colors.textMuted} />
+            ) : currentPrice === null ? (
+              <Text style={styles.metricValueMuted}>alınamadı</Text>
+            ) : (
+              <Text style={styles.metricValue}>{currentPrice.toFixed(2)} TL</Text>
+            )}
+          </View>
+        )}
       </View>
 
+      {unrealizedPnL !== null && (
+        <View
+          style={[styles.pnlPill, isUnrealizedProfit ? styles.pnlPillProfit : styles.pnlPillLoss]}
+        >
+          <Ionicons
+            name={isUnrealizedProfit ? 'trending-up' : 'trending-down'}
+            size={16}
+            color={isUnrealizedProfit ? colors.profit : colors.loss}
+          />
+          <Text
+            style={[styles.pnlText, { color: isUnrealizedProfit ? colors.profit : colors.loss }]}
+          >
+            Tahmini K/Z (gecikmeli): {unrealizedPnL.toFixed(2)} TL
+          </Text>
+        </View>
+      )}
+
       {item.soldQuantity > 0 ? (
-        <>
-          <View style={[styles.pnlPill, isProfit ? styles.pnlPillProfit : styles.pnlPillLoss]}>
-            <Ionicons
-              name={isProfit ? 'trending-up' : 'trending-down'}
-              size={16}
-              color={isProfit ? colors.profit : colors.loss}
-            />
-            <Text style={[styles.pnlText, { color: isProfit ? colors.profit : colors.loss }]}>
-              Satılan {item.soldQuantity} adetten K/Z: {item.realizedPnL.toFixed(2)} TL
-            </Text>
-          </View>
-          {item.heldQuantity > 0 && (
-            <Text style={styles.pnlFootnote}>
-              Elindeki {item.heldQuantity} adet için güncel fiyat takip edilmiyor.
-            </Text>
-          )}
-        </>
+        <View
+          style={[
+            styles.pnlPill,
+            styles.pnlPillSecondary,
+            isRealizedProfit ? styles.pnlPillProfit : styles.pnlPillLoss,
+          ]}
+        >
+          <Ionicons
+            name={isRealizedProfit ? 'trending-up' : 'trending-down'}
+            size={16}
+            color={isRealizedProfit ? colors.profit : colors.loss}
+          />
+          <Text
+            style={[styles.pnlText, { color: isRealizedProfit ? colors.profit : colors.loss }]}
+          >
+            Satılan {item.soldQuantity} adetten gerçekleşen K/Z: {item.realizedPnL.toFixed(2)} TL
+          </Text>
+        </View>
       ) : (
-        <Text style={styles.pnlFootnote}>Henüz satış yapılmadı — güncel fiyat takip edilmiyor.</Text>
+        item.heldQuantity > 0 && (
+          <Text style={styles.pnlFootnote}>Henüz satış yapılmadı.</Text>
+        )
       )}
     </View>
   );
@@ -199,6 +286,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontRegular,
     fontSize: typography.label.fontSize,
     textAlign: 'center',
+  },
+  priceDisclaimer: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+    marginBottom: spacing.md,
   },
   list: { padding: spacing.md, backgroundColor: colors.background },
   card: {
@@ -240,7 +333,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  metricsRow: { flexDirection: 'row', gap: spacing.xl, marginBottom: spacing.md },
+  metricsRow: { flexDirection: 'row', gap: spacing.lg, marginBottom: spacing.md, flexWrap: 'wrap' },
   metricLabel: {
     color: colors.textMuted,
     fontFamily: typography.fontRegular,
@@ -249,6 +342,11 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: colors.textPrimary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.body.fontSize,
+  },
+  metricValueMuted: {
+    color: colors.textMuted,
     fontFamily: typography.fontMedium,
     fontSize: typography.body.fontSize,
   },
@@ -261,6 +359,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radius.pill,
   },
+  pnlPillSecondary: { marginTop: spacing.xs },
   pnlPillProfit: { backgroundColor: 'rgba(34,197,94,0.12)' },
   pnlPillLoss: { backgroundColor: 'rgba(248,113,113,0.12)' },
   pnlText: { fontFamily: typography.fontSemiBold, fontSize: typography.label.fontSize },
