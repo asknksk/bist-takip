@@ -1,4 +1,4 @@
-import { CumulativePnLPoint, PortfolioRow, Stock, Transaction } from './types';
+import { CumulativePnLPoint, DailyPnL, PortfolioRow, Stock, Transaction } from './types';
 
 function sum(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0);
@@ -65,4 +65,23 @@ export function calculateCumulativePnLOverTime(
     cumulative += t.quantity * (t.price - avgBuyPrice);
     return { date: t.date, cumulativePnL: cumulative };
   });
+}
+
+export function calculateDailyRealizedPnL(stocks: Stock[], transactions: Transaction[]): DailyPnL[] {
+  const avgBuyPriceByStock = new Map<number, number>();
+  for (const stock of stocks) {
+    avgBuyPriceByStock.set(stock.id, calculatePortfolioRow(stock, transactions).avgBuyPrice);
+  }
+
+  const pnlByDate = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.type !== 'sell') continue;
+    const avgBuyPrice = avgBuyPriceByStock.get(t.stockId) ?? 0;
+    const pnl = t.quantity * (t.price - avgBuyPrice);
+    pnlByDate.set(t.date, (pnlByDate.get(t.date) ?? 0) + pnl);
+  }
+
+  return Array.from(pnlByDate.entries())
+    .map(([date, realizedPnL]) => ({ date, realizedPnL }))
+    .sort((a, b) => b.date.localeCompare(a.date));
 }

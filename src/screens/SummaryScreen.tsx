@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Alert, Dimensions, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,18 +8,41 @@ import { getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import {
   calculateCumulativePnLOverTime,
+  calculateDailyRealizedPnL,
   calculatePortfolio,
   calculateTotalRealizedPnL,
 } from '../domain/calculations';
-import { CumulativePnLPoint, PortfolioRow } from '../domain/types';
+import { CumulativePnLPoint, DailyPnL, PortfolioRow } from '../domain/types';
 import { colors, radius, spacing, typography } from '../theme/theme';
 
 const screenWidth = Dimensions.get('window').width - spacing.md * 2 - spacing.md * 2;
+
+function toIsoDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function mostRecentMondayIso(d: Date): string {
+  const dayOfWeek = d.getDay(); // 0 = Sunday, 1 = Monday, ...
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diffToMonday);
+  return toIsoDate(monday);
+}
+
+function sumPnLInRange(daily: DailyPnL[], fromIso: string, toIsoInclusive: string): number {
+  return daily
+    .filter((d) => d.date >= fromIso && d.date <= toIsoInclusive)
+    .reduce((acc, d) => acc + d.realizedPnL, 0);
+}
 
 export default function SummaryScreen() {
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<PortfolioRow[]>([]);
   const [points, setPoints] = useState<CumulativePnLPoint[]>([]);
+  const [daily, setDaily] = useState<DailyPnL[]>([]);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
@@ -30,6 +53,7 @@ export default function SummaryScreen() {
           if (cancelled) return;
           setRows(calculatePortfolio(stocks, txs));
           setPoints(calculateCumulativePnLOverTime(stocks, txs));
+          setDaily(calculateDailyRealizedPnL(stocks, txs));
         })
         .catch(() => {
           if (!cancelled) Alert.alert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
@@ -45,6 +69,16 @@ export default function SummaryScreen() {
 
   const total = calculateTotalRealizedPnL(rows);
   const isProfit = total >= 0;
+
+  const { todayPnL, weekPnL } = useMemo(() => {
+    const now = new Date();
+    const todayIso = toIsoDate(now);
+    const mondayIso = mostRecentMondayIso(now);
+    return {
+      todayPnL: sumPnLInRange(daily, todayIso, todayIso),
+      weekPnL: sumPnLInRange(daily, mondayIso, todayIso),
+    };
+  }, [daily]);
 
   if (loading) {
     return (
@@ -70,6 +104,11 @@ export default function SummaryScreen() {
             {total.toFixed(2)} TL
           </Text>
         </View>
+      </View>
+
+      <View style={styles.quickStatsRow}>
+        <QuickStatCard label="Bugün" value={todayPnL} />
+        <QuickStatCard label="Bu Hafta" value={weekPnL} />
       </View>
 
       {rows.length > 0 && (
@@ -120,6 +159,25 @@ export default function SummaryScreen() {
   );
 }
 
+function QuickStatCard({ label, value }: { label: string; value: number }) {
+  const isProfit = value >= 0;
+  return (
+    <View style={styles.quickStatCard}>
+      <Text style={styles.quickStatLabel}>{label}</Text>
+      <View style={styles.quickStatValueRow}>
+        <Ionicons
+          name={isProfit ? 'trending-up' : 'trending-down'}
+          size={14}
+          color={isProfit ? colors.profit : colors.loss}
+        />
+        <Text style={[styles.quickStatValue, { color: isProfit ? colors.profit : colors.loss }]}>
+          {value.toFixed(2)} TL
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 const chartConfig = {
   backgroundGradientFrom: colors.surface,
   backgroundGradientTo: colors.surface,
@@ -150,6 +208,23 @@ const styles = StyleSheet.create({
   },
   totalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   totalValue: { fontFamily: typography.fontBold, fontSize: typography.display.fontSize },
+  quickStatsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  quickStatCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  quickStatLabel: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.caption.fontSize,
+    marginBottom: spacing.xs,
+  },
+  quickStatValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  quickStatValue: { fontFamily: typography.fontSemiBold, fontSize: typography.label.fontSize },
   chartCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,

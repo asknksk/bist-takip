@@ -32,3 +32,8 @@ export interface CumulativePnLPoint {
   date: string;
   cumulativePnL: number;
 }
+
+export interface DailyPnL {
+  date: string;
+  realizedPnL: number;
+}
