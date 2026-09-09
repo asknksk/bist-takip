@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../components/AppAlert';
+import StockDetailModal from '../components/StockDetailModal';
 import { getAllStocks } from '../db/stocksRepo';
 import { getAllTransactions } from '../db/transactionsRepo';
 import {
@@ -13,7 +14,7 @@ import {
   calculateTotalRealizedPnL,
 } from '../domain/calculations';
 import { DailyPnL, MonthlyPnL, PortfolioRow } from '../domain/types';
-import { colors, radius, spacing, typography } from '../theme/theme';
+import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
 
 function toIsoDate(d: Date): string {
   const year = d.getFullYear();
@@ -52,27 +53,25 @@ export default function SummaryScreen() {
   const [daily, setDaily] = useState<DailyPnL[]>([]);
   const [monthly, setMonthly] = useState<MonthlyPnL[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedStockId, setSelectedStockId] = useState<number | null>(null);
+
+  const load = useCallback(() => {
+    return Promise.all([getAllStocks(), getAllTransactions()])
+      .then(([stocks, txs]) => {
+        setRows(calculatePortfolio(stocks, txs));
+        setDaily(calculateDailyRealizedPnL(stocks, txs));
+        setMonthly(calculateMonthlyRealizedPnL(stocks, txs));
+      })
+      .catch(() => {
+        showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let cancelled = false;
-      Promise.all([getAllStocks(), getAllTransactions()])
-        .then(([stocks, txs]) => {
-          if (cancelled) return;
-          setRows(calculatePortfolio(stocks, txs));
-          setDaily(calculateDailyRealizedPnL(stocks, txs));
-          setMonthly(calculateMonthlyRealizedPnL(stocks, txs));
-        })
-        .catch(() => {
-          if (!cancelled) showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [])
+      load();
+    }, [load])
   );
 
   const total = calculateTotalRealizedPnL(rows);
@@ -156,6 +155,7 @@ export default function SummaryScreen() {
               sublabel={r.name}
               value={r.realizedPnL}
               maxAbs={maxStockAbsPnL}
+              onPress={() => setSelectedStockId(r.stockId)}
             />
           ))}
         </View>
@@ -167,6 +167,13 @@ export default function SummaryScreen() {
           <Text style={styles.emptyText}>Henüz işlem yok.</Text>
         </View>
       )}
+
+      <StockDetailModal
+        visible={selectedStockId !== null}
+        stockId={selectedStockId}
+        onClose={() => setSelectedStockId(null)}
+        onChanged={load}
+      />
     </ScrollView>
   );
 }
@@ -195,17 +202,25 @@ function BarListRow({
   sublabel,
   value,
   maxAbs,
+  onPress,
 }: {
   label: string;
   sublabel?: string;
   value: number;
   maxAbs: number;
+  onPress?: () => void;
 }) {
   const isProfit = value >= 0;
   const widthPct = Math.max(4, (Math.abs(value) / maxAbs) * 100);
   const barColor = isProfit ? colors.profit : colors.loss;
+  const Container = onPress ? Pressable : View;
   return (
-    <View style={styles.barRow}>
+    <Container
+      style={styles.barRow}
+      onPress={onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? `${label} detayını göster` : undefined}
+    >
       <View style={styles.barLabelCol}>
         <Text style={styles.barLabel} numberOfLines={1}>
           {label}
@@ -223,7 +238,8 @@ function BarListRow({
         {isProfit ? '+' : ''}
         {value.toFixed(0)} TL
       </Text>
-    </View>
+      {onPress && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
+    </Container>
   );
 }
 
@@ -284,6 +300,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.sm,
+    minHeight: touchTarget.minSize,
   },
   barLabelCol: { width: 78 },
   barLabel: {
