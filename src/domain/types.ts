@@ -42,3 +42,10 @@ export interface MonthlyPnL {
   month: string; // YYYY-MM
   realizedPnL: number;
 }
+
+export interface StockPnLInRange {
+  stockId: number;
+  symbol: string;
+  name: string;
+  realizedPnL: number;
+}

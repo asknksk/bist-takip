@@ -1,4 +1,12 @@
-import { CumulativePnLPoint, DailyPnL, MonthlyPnL, PortfolioRow, Stock, Transaction } from './types';
+import {
+  CumulativePnLPoint,
+  DailyPnL,
+  MonthlyPnL,
+  PortfolioRow,
+  Stock,
+  StockPnLInRange,
+  Transaction,
+} from './types';
 
 function sum(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0);
@@ -104,4 +112,45 @@ export function calculateMonthlyRealizedPnL(stocks: Stock[], transactions: Trans
   return Array.from(pnlByMonth.entries())
     .map(([month, realizedPnL]) => ({ month, realizedPnL }))
     .sort((a, b) => b.month.localeCompare(a.month));
+}
+
+/**
+ * Realized P&L per stock, counting only sell transactions whose date falls
+ * within [fromIso, toIso] (both inclusive, ISO YYYY-MM-DD strings compare
+ * lexicographically). Pass '' for fromIso or a far-future date for toIso to
+ * leave that side of the range open. Uses each stock's overall average buy
+ * price, consistent with calculateDailyRealizedPnL/calculateMonthlyRealizedPnL.
+ */
+export function calculateRealizedPnLByStockInRange(
+  stocks: Stock[],
+  transactions: Transaction[],
+  fromIso: string,
+  toIso: string
+): StockPnLInRange[] {
+  const avgBuyPriceByStock = new Map<number, number>();
+  for (const stock of stocks) {
+    avgBuyPriceByStock.set(stock.id, calculatePortfolioRow(stock, transactions).avgBuyPrice);
+  }
+
+  const pnlByStock = new Map<number, number>();
+  for (const t of transactions) {
+    if (t.type !== 'sell') continue;
+    if (t.date < fromIso || t.date > toIso) continue;
+    const avgBuyPrice = avgBuyPriceByStock.get(t.stockId) ?? 0;
+    const pnl = t.quantity * (t.price - avgBuyPrice);
+    pnlByStock.set(t.stockId, (pnlByStock.get(t.stockId) ?? 0) + pnl);
+  }
+
+  const stockById = new Map(stocks.map((s) => [s.id, s]));
+  return Array.from(pnlByStock.entries())
+    .map(([stockId, realizedPnL]) => {
+      const s = stockById.get(stockId);
+      return {
+        stockId,
+        symbol: s?.symbol ?? '',
+        name: s?.name ?? '',
+        realizedPnL,
+      };
+    })
+    .sort((a, b) => Math.abs(b.realizedPnL) - Math.abs(a.realizedPnL));
 }

@@ -6,6 +6,7 @@ import {
   calculateCumulativePnLOverTime,
   calculateDailyRealizedPnL,
   calculateMonthlyRealizedPnL,
+  calculateRealizedPnLByStockInRange,
 } from '../calculations';
 import { Stock, Transaction } from '../types';
 
@@ -170,5 +171,46 @@ describe('calculateMonthlyRealizedPnL', () => {
   test('returns an empty array when there are no sell transactions', () => {
     const txs = [tx({ type: 'buy' })];
     expect(calculateMonthlyRealizedPnL([stock], txs)).toEqual([]);
+  });
+});
+
+describe('calculateRealizedPnLByStockInRange', () => {
+  test('only counts sells whose date falls within [from, to], using each stock overall avg buy price', () => {
+    const txs: Transaction[] = [
+      tx({ id: 1, stockId: stock.id, type: 'buy', quantity: 10, price: 100, date: '2026-01-01' }),
+      tx({ id: 2, stockId: stock.id, type: 'sell', quantity: 5, price: 150, date: '2026-02-10' }),
+      tx({ id: 3, stockId: stock.id, type: 'sell', quantity: 5, price: 130, date: '2026-05-01' }),
+      tx({ id: 4, stockId: stock2.id, type: 'buy', quantity: 20, price: 10, date: '2026-01-15' }),
+      tx({ id: 5, stockId: stock2.id, type: 'sell', quantity: 10, price: 8, date: '2026-02-20' }),
+    ];
+    // Range covers only February: only tx 2 and 5 count.
+    const result = calculateRealizedPnLByStockInRange([stock, stock2], txs, '2026-02-01', '2026-02-28');
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { stockId: stock.id, symbol: 'THYAO', name: 'Türk Hava Yolları', realizedPnL: 250 },
+        { stockId: stock2.id, symbol: 'ASELS', name: 'Aselsan', realizedPnL: -20 },
+      ])
+    );
+    expect(result).toHaveLength(2);
+  });
+
+  test('excludes stocks with no sells in range even if they have sells outside it', () => {
+    const txs: Transaction[] = [
+      tx({ id: 1, stockId: stock.id, type: 'buy', quantity: 10, price: 100, date: '2026-01-01' }),
+      tx({ id: 2, stockId: stock.id, type: 'sell', quantity: 5, price: 150, date: '2026-06-01' }),
+    ];
+    const result = calculateRealizedPnLByStockInRange([stock], txs, '2026-01-01', '2026-02-01');
+    expect(result).toEqual([]);
+  });
+
+  test('an open-ended range (empty from/to) behaves like no lower/upper bound', () => {
+    const txs: Transaction[] = [
+      tx({ id: 1, stockId: stock.id, type: 'buy', quantity: 10, price: 100, date: '2026-01-01' }),
+      tx({ id: 2, stockId: stock.id, type: 'sell', quantity: 5, price: 150, date: '2026-06-01' }),
+    ];
+    const result = calculateRealizedPnLByStockInRange([stock], txs, '', '9999-12-31');
+    expect(result).toEqual([
+      { stockId: stock.id, symbol: 'THYAO', name: 'Türk Hava Yolları', realizedPnL: 250 },
+    ]);
   });
 });

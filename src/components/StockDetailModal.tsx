@@ -99,7 +99,11 @@ export default function StockDetailModal({ visible, stockId, onClose, onChanged 
               <View style={styles.summaryCard}>
                 <View style={styles.summaryRow}>
                   <SummaryItem label="Elde tutulan" value={String(row.heldQuantity)} />
-                  <SummaryItem label="Ortalama maliyet" value={`${row.avgBuyPrice.toFixed(2)} TL`} />
+                  <SummaryItem
+                    label="Ortalama maliyet"
+                    value={`${row.avgBuyPrice.toFixed(2)} TL`}
+                    hint={`Toplam: ${(row.heldQuantity * row.avgBuyPrice).toFixed(2)} TL`}
+                  />
                 </View>
                 {row.heldQuantity > 0 && (
                   <View style={styles.summaryRow}>
@@ -171,11 +175,22 @@ export default function StockDetailModal({ visible, stockId, onClose, onChanged 
   );
 }
 
-function SummaryItem({ label, value, color }: { label: string; value: string; color?: string }) {
+function SummaryItem({
+  label,
+  value,
+  color,
+  hint,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+  hint?: string;
+}) {
   return (
     <View style={styles.summaryItem}>
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={[styles.summaryValue, color ? { color } : null]}>{value}</Text>
+      {hint && <Text style={styles.summaryHint}>{hint}</Text>}
     </View>
   );
 }
@@ -217,6 +232,12 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: typography.fontSemiBold,
     fontSize: typography.body.fontSize,
+  },
+  summaryHint: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+    marginTop: 1,
   },
   sectionTitle: {
     color: colors.textPrimary,

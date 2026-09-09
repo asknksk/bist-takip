@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, { DateTimePickerChangeEvent } from '@react-native-community/datetimepicker';
 import { showAlert } from '../components/AppAlert';
 import StockDetailModal from '../components/StockDetailModal';
 import { getAllStocks } from '../db/stocksRepo';
@@ -11,9 +12,10 @@ import {
   calculateDailyRealizedPnL,
   calculateMonthlyRealizedPnL,
   calculatePortfolio,
+  calculateRealizedPnLByStockInRange,
   calculateTotalRealizedPnL,
 } from '../domain/calculations';
-import { DailyPnL, MonthlyPnL, PortfolioRow } from '../domain/types';
+import { DailyPnL, MonthlyPnL, PortfolioRow, Stock, StockPnLInRange, Transaction } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
 
 function toIsoDate(d: Date): string {
@@ -21,6 +23,10 @@ function toIsoDate(d: Date): string {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function formatShortDate(d: Date): string {
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function mostRecentMondayIso(d: Date): string {
@@ -47,20 +53,31 @@ function formatMonthLabel(monthIso: string): string {
   return `${MONTH_NAMES[month - 1]} ${year}`;
 }
 
+type EditingField = 'from' | 'to' | null;
+
 export default function SummaryScreen() {
   const insets = useSafeAreaInsets();
+  const [stocks, setStocks] = useState<Stock[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [rows, setRows] = useState<PortfolioRow[]>([]);
   const [daily, setDaily] = useState<DailyPnL[]>([]);
   const [monthly, setMonthly] = useState<MonthlyPnL[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStockId, setSelectedStockId] = useState<number | null>(null);
 
+  const [filterFrom, setFilterFrom] = useState<Date | null>(null);
+  const [filterTo, setFilterTo] = useState<Date | null>(null);
+  const [editingField, setEditingField] = useState<EditingField>(null);
+  const isFiltered = filterFrom !== null || filterTo !== null;
+
   const load = useCallback(() => {
     return Promise.all([getAllStocks(), getAllTransactions()])
-      .then(([stocks, txs]) => {
-        setRows(calculatePortfolio(stocks, txs));
-        setDaily(calculateDailyRealizedPnL(stocks, txs));
-        setMonthly(calculateMonthlyRealizedPnL(stocks, txs));
+      .then(([fetchedStocks, txs]) => {
+        setStocks(fetchedStocks);
+        setTransactions(txs);
+        setRows(calculatePortfolio(fetchedStocks, txs));
+        setDaily(calculateDailyRealizedPnL(fetchedStocks, txs));
+        setMonthly(calculateMonthlyRealizedPnL(fetchedStocks, txs));
       })
       .catch(() => {
         showAlert('Hata', 'Veriler yüklenemedi. Lütfen tekrar deneyin.');
@@ -74,7 +91,16 @@ export default function SummaryScreen() {
     }, [load])
   );
 
-  const total = calculateTotalRealizedPnL(rows);
+  const filteredStockRows: StockPnLInRange[] = useMemo(() => {
+    if (!isFiltered) return [];
+    const fromIso = filterFrom ? toIsoDate(filterFrom) : '';
+    const toIso = filterTo ? toIsoDate(filterTo) : '9999-12-31';
+    return calculateRealizedPnLByStockInRange(stocks, transactions, fromIso, toIso);
+  }, [isFiltered, filterFrom, filterTo, stocks, transactions]);
+
+  const total = isFiltered
+    ? filteredStockRows.reduce((acc, r) => acc + r.realizedPnL, 0)
+    : calculateTotalRealizedPnL(rows);
   const isProfit = total >= 0;
 
   const { todayPnL, weekPnL } = useMemo(() => {
@@ -91,14 +117,27 @@ export default function SummaryScreen() {
     () => [...rows].sort((a, b) => Math.abs(b.realizedPnL) - Math.abs(a.realizedPnL)),
     [rows]
   );
+  const displayedStockRows: { stockId: number; symbol: string; name: string; realizedPnL: number }[] =
+    isFiltered ? filteredStockRows : stockRowsByPnL;
   const maxStockAbsPnL = useMemo(
-    () => Math.max(1, ...stockRowsByPnL.map((r) => Math.abs(r.realizedPnL))),
-    [stockRowsByPnL]
+    () => Math.max(1, ...displayedStockRows.map((r) => Math.abs(r.realizedPnL))),
+    [displayedStockRows]
   );
   const maxMonthAbsPnL = useMemo(
     () => Math.max(1, ...monthly.map((m) => Math.abs(m.realizedPnL))),
     [monthly]
   );
+
+  function handleFilterDateChange(event: DateTimePickerChangeEvent, selected: Date) {
+    if (Platform.OS === 'android') setEditingField(null);
+    if (editingField === 'from') setFilterFrom(selected);
+    else if (editingField === 'to') setFilterTo(selected);
+  }
+
+  function clearFilter() {
+    setFilterFrom(null);
+    setFilterTo(null);
+  }
 
   if (loading) {
     return (
@@ -112,8 +151,61 @@ export default function SummaryScreen() {
     <ScrollView
       contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.lg }]}
     >
+      <View style={styles.filterCard}>
+        <View style={styles.filterHeader}>
+          <Text style={styles.filterTitle}>Tarih Filtresi</Text>
+          {isFiltered && (
+            <Pressable onPress={clearFilter} accessibilityRole="button">
+              <Text style={styles.filterClearText}>Temizle</Text>
+            </Pressable>
+          )}
+        </View>
+        <View style={styles.filterRow}>
+          <Pressable
+            style={styles.filterDateButton}
+            onPress={() => setEditingField('from')}
+            accessibilityRole="button"
+            accessibilityLabel="Başlangıç tarihi seç"
+          >
+            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.filterDateText}>
+              {filterFrom ? formatShortDate(filterFrom) : 'Başlangıç'}
+            </Text>
+          </Pressable>
+          <Text style={styles.filterDash}>–</Text>
+          <Pressable
+            style={styles.filterDateButton}
+            onPress={() => setEditingField('to')}
+            accessibilityRole="button"
+            accessibilityLabel="Bitiş tarihi seç"
+          >
+            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.filterDateText}>{filterTo ? formatShortDate(filterTo) : 'Bitiş'}</Text>
+          </Pressable>
+        </View>
+        {editingField && (
+          <View style={Platform.OS === 'ios' ? styles.iosPickerCard : undefined}>
+            <DateTimePicker
+              value={(editingField === 'from' ? filterFrom : filterTo) ?? new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              maximumDate={new Date()}
+              onValueChange={handleFilterDateChange}
+              onDismiss={() => setEditingField(null)}
+            />
+            {Platform.OS === 'ios' && (
+              <Pressable style={styles.iosPickerDoneButton} onPress={() => setEditingField(null)}>
+                <Text style={styles.iosPickerDoneText}>Tamam</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+      </View>
+
       <View style={styles.heroCard}>
-        <Text style={styles.totalLabel}>Toplam Gerçekleşen Kar/Zarar</Text>
+        <Text style={styles.totalLabel}>
+          {isFiltered ? 'Seçilen Aralıkta Gerçekleşen Kar/Zarar' : 'Toplam Gerçekleşen Kar/Zarar'}
+        </Text>
         <View style={styles.totalRow}>
           <Ionicons
             name={isProfit ? 'trending-up' : 'trending-down'}
@@ -126,12 +218,14 @@ export default function SummaryScreen() {
         </View>
       </View>
 
-      <View style={styles.quickStatsRow}>
-        <QuickStatCard label="Bugün" value={todayPnL} />
-        <QuickStatCard label="Bu Hafta" value={weekPnL} />
-      </View>
+      {!isFiltered && (
+        <View style={styles.quickStatsRow}>
+          <QuickStatCard label="Bugün" value={todayPnL} />
+          <QuickStatCard label="Bu Hafta" value={weekPnL} />
+        </View>
+      )}
 
-      {monthly.length > 0 && (
+      {!isFiltered && monthly.length > 0 && (
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Aylık Kar/Zarar</Text>
           {monthly.map((m) => (
@@ -145,10 +239,12 @@ export default function SummaryScreen() {
         </View>
       )}
 
-      {stockRowsByPnL.length > 0 && (
+      {displayedStockRows.length > 0 && (
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Hisse Bazında Kar/Zarar</Text>
-          {stockRowsByPnL.map((r) => (
+          <Text style={styles.sectionTitle}>
+            {isFiltered ? 'Hisse Bazında Kar/Zarar (Seçilen Aralık)' : 'Hisse Bazında Kar/Zarar'}
+          </Text>
+          {displayedStockRows.map((r) => (
             <BarListRow
               key={r.stockId}
               label={r.symbol}
@@ -161,7 +257,14 @@ export default function SummaryScreen() {
         </View>
       )}
 
-      {rows.length === 0 && (
+      {isFiltered && displayedStockRows.length === 0 && (
+        <View style={styles.emptyInline}>
+          <Ionicons name="calendar-outline" size={40} color={colors.textMuted} />
+          <Text style={styles.emptyText}>Bu tarih aralığında işlem yok.</Text>
+        </View>
+      )}
+
+      {!isFiltered && rows.length === 0 && (
         <View style={styles.emptyInline}>
           <Ionicons name="bar-chart-outline" size={40} color={colors.textMuted} />
           <Text style={styles.emptyText}>Henüz işlem yok.</Text>
@@ -248,6 +351,69 @@ const styles = StyleSheet.create({
   emptyInline: { alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
   emptyText: { color: colors.textPrimary, fontFamily: typography.fontMedium, fontSize: typography.body.fontSize },
   container: { padding: spacing.md, backgroundColor: colors.background },
+  filterCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  filterTitle: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.label.fontSize,
+  },
+  filterClearText: {
+    color: colors.primary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.caption.fontSize,
+  },
+  filterRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  filterDateButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: touchTarget.minSize,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm,
+  },
+  filterDateText: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontMedium,
+    fontSize: typography.caption.fontSize,
+  },
+  filterDash: { color: colors.textMuted },
+  iosPickerCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.sm,
+    overflow: 'hidden',
+  },
+  iosPickerDoneButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: touchTarget.minSize,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  iosPickerDoneText: {
+    color: colors.primary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.body.fontSize,
+  },
   heroCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
