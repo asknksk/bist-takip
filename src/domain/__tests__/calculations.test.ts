@@ -309,8 +309,22 @@ describe('calculateSellPnLs', () => {
     ];
     const result = calculateSellPnLs([stock], txs);
     expect(result).toEqual([
-      { transactionId: 2, stockId: stock.id, date: '2026-01-05', quantity: 100, realizedPnL: 200 },
-      { transactionId: 4, stockId: stock.id, date: '2026-02-10', quantity: 20, realizedPnL: 100 },
+      {
+        transactionId: 2,
+        stockId: stock.id,
+        date: '2026-01-05',
+        quantity: 100,
+        realizedPnL: 200,
+        avgCostAtSale: 10,
+      },
+      {
+        transactionId: 4,
+        stockId: stock.id,
+        date: '2026-02-10',
+        quantity: 20,
+        realizedPnL: 100,
+        avgCostAtSale: 20,
+      },
     ]);
   });
 });

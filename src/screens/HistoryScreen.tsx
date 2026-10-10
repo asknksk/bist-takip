@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { deleteTransaction, getAllTransactions } from '../db/transactionsRepo';
-import { calculateDailyRealizedPnL } from '../domain/calculations';
+import { calculateDailyRealizedPnL, calculateSellPnLs } from '../domain/calculations';
 import { Stock, Transaction } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
 import { formatCurrency } from '../utils/format';
@@ -77,6 +77,15 @@ export default function HistoryScreen() {
     return Array.from(txByDate.entries())
       .map(([date, txs]) => ({ date, transactions: txs, realizedPnL: pnlByDate.get(date) ?? 0 }))
       .sort((a, b) => b.date.localeCompare(a.date));
+  }, [stocks, transactions]);
+
+  // Per-sell realized P&L + cost basis at sale time, keyed by transaction id.
+  const sellPnLById = useMemo(() => {
+    const map = new Map<number, { realizedPnL: number; avgCostAtSale: number }>();
+    for (const s of calculateSellPnLs(stocks, transactions)) {
+      map.set(s.transactionId, { realizedPnL: s.realizedPnL, avgCostAtSale: s.avgCostAtSale });
+    }
+    return map;
   }, [stocks, transactions]);
 
   function toggleDate(date: string) {
@@ -171,6 +180,7 @@ export default function HistoryScreen() {
                 {group.transactions.map((item, index) => {
                   const stock = stocksById[item.stockId];
                   const isBuy = item.type === 'buy';
+                  const sellPnl = isBuy ? undefined : sellPnLById.get(item.id);
                   const isLast = index === group.transactions.length - 1;
                   return (
                     <View key={item.id} style={[styles.txRow, isLast && styles.txRowLast]}>
@@ -188,6 +198,29 @@ export default function HistoryScreen() {
                         <Text style={styles.detail}>
                           {isBuy ? 'Alım' : 'Satım'} · {item.quantity} adet · {formatCurrency(item.price)} TL
                         </Text>
+                        {sellPnl && (
+                          <View style={styles.txPnlRow}>
+                            <View style={styles.txPnlMain}>
+                              <Ionicons
+                                name={sellPnl.realizedPnL >= 0 ? 'trending-up' : 'trending-down'}
+                                size={14}
+                                color={sellPnl.realizedPnL >= 0 ? colors.profit : colors.loss}
+                              />
+                              <Text
+                                style={[
+                                  styles.txPnlValue,
+                                  { color: sellPnl.realizedPnL >= 0 ? colors.profit : colors.loss },
+                                ]}
+                              >
+                                K/Z: {sellPnl.realizedPnL >= 0 ? '+' : ''}
+                                {formatCurrency(sellPnl.realizedPnL)} TL
+                              </Text>
+                            </View>
+                            <Text style={styles.txPnlCost} numberOfLines={1}>
+                              maliyet {formatCurrency(sellPnl.avgCostAtSale)} TL
+                            </Text>
+                          </View>
+                        )}
                       </View>
                       <Pressable
                         style={styles.deleteButton}
@@ -296,6 +329,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: typography.fontRegular,
     fontSize: typography.caption.fontSize,
+  },
+  txPnlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  txPnlMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  txPnlValue: {
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.caption.fontSize,
+  },
+  txPnlCost: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+    flexShrink: 1,
   },
   deleteButton: {
     width: touchTarget.minSize,

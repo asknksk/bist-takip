@@ -27,6 +27,8 @@ export interface SellPnL {
   date: string;
   quantity: number;
   realizedPnL: number;
+  /** Moving-average cost per share at the moment of this sale. */
+  avgCostAtSale: number;
 }
 
 /**
@@ -63,6 +65,7 @@ export function calculateSellPnLs(stocks: Stock[], transactions: Transaction[]):
           date: t.date,
           quantity: t.quantity,
           realizedPnL: t.quantity * (t.price - runningAvgCost),
+          avgCostAtSale: runningAvgCost,
         });
         runningQty -= t.quantity;
         if (runningQty <= 0) {

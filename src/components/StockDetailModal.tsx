@@ -94,6 +94,18 @@ export default function StockDetailModal({
     return transactions.filter((t) => t.date >= dateRange.from && t.date <= dateRange.to);
   }, [transactions, dateRange]);
 
+  // Per-sell realized P&L + cost basis at sale time, keyed by transaction
+  // id. Uses the same moving-average-cost walk as everything else, so each
+  // sale is matched to the average cost of the shares held at that moment.
+  const sellPnLById = useMemo(() => {
+    const map = new Map<number, { realizedPnL: number; avgCostAtSale: number }>();
+    if (!stock) return map;
+    for (const s of calculateSellPnLs([stock], transactions)) {
+      map.set(s.transactionId, { realizedPnL: s.realizedPnL, avgCostAtSale: s.avgCostAtSale });
+    }
+    return map;
+  }, [stock, transactions]);
+
   const rangeRealized = useMemo(() => {
     if (!dateRange || !stock) return null;
     // Uses the same moving-average-cost per-sell P&L as the rest of the
@@ -190,6 +202,7 @@ export default function StockDetailModal({
             )}
             {displayedTransactions.map((t) => {
               const isBuy = t.type === 'buy';
+              const sellPnl = isBuy ? undefined : sellPnLById.get(t.id);
               return (
                 <View key={t.id} style={styles.txRow}>
                   <View style={[styles.typeIcon, isBuy ? styles.typeIconBuy : styles.typeIconSell]}>
@@ -203,6 +216,29 @@ export default function StockDetailModal({
                     <Text style={styles.txDetail}>
                       {isBuy ? 'Alım' : 'Satım'} · {t.quantity} adet · {formatCurrency(t.price)} TL
                     </Text>
+                    {sellPnl && (
+                      <View style={styles.txPnlRow}>
+                        <View style={styles.txPnlMain}>
+                          <Ionicons
+                            name={sellPnl.realizedPnL >= 0 ? 'trending-up' : 'trending-down'}
+                            size={14}
+                            color={sellPnl.realizedPnL >= 0 ? colors.profit : colors.loss}
+                          />
+                          <Text
+                            style={[
+                              styles.txPnlValue,
+                              { color: sellPnl.realizedPnL >= 0 ? colors.profit : colors.loss },
+                            ]}
+                          >
+                            K/Z: {sellPnl.realizedPnL >= 0 ? '+' : ''}
+                            {formatCurrency(sellPnl.realizedPnL)} TL
+                          </Text>
+                        </View>
+                        <Text style={styles.txPnlCost} numberOfLines={1}>
+                          maliyet {formatCurrency(sellPnl.avgCostAtSale)} TL
+                        </Text>
+                      </View>
+                    )}
                     <Text style={styles.txDate}>{t.date}</Text>
                   </View>
                   <Pressable
@@ -330,6 +366,28 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontFamily: typography.fontRegular,
     fontSize: typography.caption.fontSize,
+  },
+  txPnlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  txPnlMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  txPnlValue: {
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.caption.fontSize,
+  },
+  txPnlCost: {
+    color: colors.textMuted,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+    flexShrink: 1,
   },
   txDeleteButton: {
     width: touchTarget.minSize,
