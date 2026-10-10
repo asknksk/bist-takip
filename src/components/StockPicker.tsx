@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import KeyboardAvoidingContainer from './KeyboardAvoidingContainer';
 import { showAlert } from './AppAlert';
 import { addCustomStock, deleteStock, getAllStocks } from '../db/stocksRepo';
 import { Stock } from '../domain/types';
@@ -91,7 +92,9 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
         <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
       </Pressable>
       <Modal visible={open} animationType="slide" onRequestClose={closeModal}>
-        <View style={[styles.modalContainer, { paddingTop: insets.top + spacing.md }]}>
+        <KeyboardAvoidingContainer
+          style={[styles.modalContainer, { paddingTop: insets.top + spacing.md }]}
+        >
           <View style={styles.searchRow}>
             <Ionicons name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
             <TextInput
@@ -159,7 +162,7 @@ export default function StockPicker({ stocks, selectedStockId, onSelect, onStock
           >
             <Text style={styles.closeButtonText}>Kapat</Text>
           </Pressable>
-        </View>
+        </KeyboardAvoidingContainer>
       </Modal>
     </View>
   );

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -17,6 +16,7 @@ import DateTimePicker, { DateTimePickerChangeEvent } from '@react-native-communi
 import StockPicker from '../components/StockPicker';
 import ImportExcelModal from '../components/ImportExcelModal';
 import PriceStepperInput, { formatPrice } from '../components/PriceStepperInput';
+import KeyboardAvoidingContainer from '../components/KeyboardAvoidingContainer';
 import { showAlert } from '../components/AppAlert';
 import { getAllStocks } from '../db/stocksRepo';
 import { addTransaction, getAllTransactions } from '../db/transactionsRepo';
@@ -182,10 +182,7 @@ export default function AddTransactionScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingContainer style={styles.flex}>
       <ScrollView
         contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
@@ -331,7 +328,7 @@ export default function AddTransactionScreen() {
         onClose={() => setImportVisible(false)}
         onImported={reloadStocks}
       />
-    </KeyboardAvoidingView>
+    </KeyboardAvoidingContainer>
   );
 }
 

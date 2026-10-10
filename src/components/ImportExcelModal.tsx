@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerChangeEvent } from '@react-native-community/datetimepicker';
 import { showAlert } from './AppAlert';
+import KeyboardAvoidingContainer from './KeyboardAvoidingContainer';
 import StockPicker from './StockPicker';
 import { addCustomStock, getAllStocks } from '../db/stocksRepo';
 import { addTransaction } from '../db/transactionsRepo';
@@ -220,7 +221,9 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
-      <View style={[styles.container, { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom }]}>
+      <KeyboardAvoidingContainer
+        style={[styles.container, { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom }]}
+      >
         {editingRow ? (
           <RowEditor
             row={editingRow}
@@ -378,7 +381,7 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
             )}
           </>
         )}
-      </View>
+      </KeyboardAvoidingContainer>
     </Modal>
   );
 }
@@ -485,7 +488,7 @@ function RowEditor({
   }
 
   return (
-    <View style={styles.editorFlex}>
+    <KeyboardAvoidingContainer style={styles.editorFlex}>
       <View style={styles.header}>
         <Pressable onPress={onCancel} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={8}>
           <Ionicons name="arrow-back" size={22} color={colors.textSecondary} />
@@ -559,7 +562,7 @@ function RowEditor({
           <Text style={styles.primaryButtonText}>Kaydet</Text>
         </Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingContainer>
   );
 }
 

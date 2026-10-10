@@ -45,6 +45,7 @@ export default function RootNavigator() {
             paddingBottom: 10,
             paddingTop: 8,
           },
+          tabBarHideOnKeyboard: true,
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarLabelStyle: { fontFamily: typography.fontMedium, fontSize: 12 },

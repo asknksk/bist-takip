@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PriceStepperInput, { formatPrice, parsePriceInput } from './PriceStepperInput';
+import KeyboardAvoidingContainer from './KeyboardAvoidingContainer';
 import { showAlert } from './AppAlert';
 import { addTransaction } from '../db/transactionsRepo';
 import { validateSellQuantity } from '../domain/calculations';
@@ -85,7 +86,7 @@ export default function QuickSellModal({ visible, item, onClose, onSold }: Quick
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingContainer style={styles.overlay}>
         <View style={[styles.card, { marginBottom: insets.bottom + spacing.lg }]}>
           <Text style={styles.title}>{item.symbol} Sat</Text>
           <Text style={styles.subtitle}>Elinde {item.heldQuantity} adet var</Text>
@@ -128,7 +129,7 @@ export default function QuickSellModal({ visible, item, onClose, onSold }: Quick
             </Pressable>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingContainer>
     </Modal>
   );
 }
