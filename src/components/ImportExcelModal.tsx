@@ -19,8 +19,9 @@ import { showAlert } from './AppAlert';
 import KeyboardAvoidingContainer from './KeyboardAvoidingContainer';
 import StockPicker from './StockPicker';
 import { addCustomStock, getAllStocks } from '../db/stocksRepo';
-import { addTransaction } from '../db/transactionsRepo';
+import { addTransaction, getAllTransactions } from '../db/transactionsRepo';
 import { parseEnparaSheet, parseMidasPdf, ParsedImportTransaction, SkippedImportRow } from '../domain/importParser';
+import { findDuplicateTransactions } from '../domain/duplicates';
 import { extractPdfText } from '../utils/pdf';
 import { Stock, TransactionType } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
@@ -39,6 +40,10 @@ interface PreviewRow {
   rowId: string;
   tx: ParsedImportTransaction;
   stockId: number | null; // null = symbol didn't match any known stock
+}
+
+interface DuplicateRow extends PreviewRow {
+  selected: boolean; // user chose to import this duplicate anyway
 }
 
 function parseDateParts(iso: string): Date {
@@ -72,9 +77,11 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
   const [source, setSource] = useState<ImportSource | null>(null);
   const [fileName, setFileName] = useState('');
   const [rows, setRows] = useState<PreviewRow[]>([]);
+  const [duplicateRows, setDuplicateRows] = useState<DuplicateRow[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [skippedRows, setSkippedRows] = useState<SkippedImportRow[]>([]);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [failedCount, setFailedCount] = useState(0);
@@ -84,8 +91,10 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
     setSource(null);
     setFileName('');
     setRows([]);
+    setDuplicateRows([]);
     setSkippedRows([]);
     setShowSkipped(false);
+    setShowDuplicates(false);
     setEditingRowId(null);
     setProgress({ done: 0, total: 0 });
     setFailedCount(0);
@@ -105,16 +114,42 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
       return;
     }
     const currentStocks = await getAllStocks();
+    console.log('[Import] stocks loaded:', currentStocks.length);
     setStocks(currentStocks);
-    setRows(
-      result.transactions.map((tx, index) => ({
-        rowId: `row-${index}`,
-        tx,
-        stockId: resolveStockId(tx.symbol, currentStocks),
-      }))
+
+    // Detect rows that likely already exist in the DB (same symbol, type,
+    // quantity, price, date and time within ±5 minutes) — e.g. re-importing
+    // the same broker statement. Those are shown in a separate list and are
+    // skipped by default.
+    const existing = await getAllTransactions();
+    const symbolById = new Map(currentStocks.map((s) => [s.id, s.symbol]));
+    const existingComparable = existing.flatMap((t) => {
+      const symbol = symbolById.get(t.stockId);
+      return symbol ? [{ ...t, symbol }] : [];
+    });
+    const duplicateIndices = new Set(
+      findDuplicateTransactions(result.transactions, existingComparable)
+    );
+    const allRows: PreviewRow[] = result.transactions.map((tx, index) => ({
+      rowId: `row-${index}`,
+      tx,
+      stockId: resolveStockId(tx.symbol, currentStocks),
+    }));
+    console.log(
+      '[Import] duplicates:',
+      duplicateIndices.size,
+      'of',
+      allRows.length
+    );
+    setRows(allRows.filter((_, i) => !duplicateIndices.has(i)));
+    setDuplicateRows(
+      allRows
+        .filter((_, i) => duplicateIndices.has(i))
+        .map((r) => ({ ...r, selected: false }))
     );
     setFileName(pickedFileName);
     setSkippedRows(result.skippedRows);
+    setShowDuplicates(duplicateIndices.size > 0);
     setStep('preview');
   }
 
@@ -169,11 +204,22 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
       if (result.canceled || result.assets.length === 0) return;
 
       const asset = result.assets[0];
+      console.log('[MidasPDF] File:', asset.name, 'URI:', asset.uri);
       const response = await fetch(asset.uri);
       const arrayBuffer = await response.arrayBuffer();
+      console.log('[MidasPDF] ArrayBuffer size:', arrayBuffer.byteLength);
       const pdfText = await extractPdfText(new Uint8Array(arrayBuffer));
+      console.log('[MidasPDF] Extracted text length:', pdfText.length);
+      console.log('[MidasPDF] First 500 chars:', pdfText.slice(0, 500));
+      console.log('[MidasPDF] Contains AKBNK:', pdfText.includes('AKBNK'));
+      console.log('[MidasPDF] Contains Gerçekleşti:', pdfText.includes('Gerçekleşti'));
 
       const parsed = parseMidasPdf(pdfText);
+      console.log('[MidasPDF] Parsed transactions:', parsed.transactions.length);
+      console.log('[MidasPDF] Skipped rows:', parsed.skippedCount);
+      if (parsed.transactions.length > 0) {
+        console.log('[MidasPDF] First transaction:', JSON.stringify(parsed.transactions[0]));
+      }
       if (parsed.transactions.length === 0 && parsed.skippedRows.length === 0) {
         showAlert(
           'Hata',
@@ -210,15 +256,17 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
   }
 
   async function handleConfirmImport() {
+    const selectedDuplicates = duplicateRows.filter((d) => d.selected);
+    const rowsToImport: PreviewRow[] = [...rows, ...selectedDuplicates];
     setStep('importing');
-    setProgress({ done: 0, total: rows.length });
+    setProgress({ done: 0, total: rowsToImport.length });
 
     let currentStocks = stocks;
     let bySymbol = new Map(currentStocks.map((s) => [s.symbol.toUpperCase(), s]));
 
     // Rows the user never resolved fall back to the original behavior: a
     // custom stock gets created automatically from the parsed symbol.
-    const stillUnresolved = rows.filter((r) => r.stockId === null);
+    const stillUnresolved = rowsToImport.filter((r) => r.stockId === null);
     const missingSymbols = Array.from(new Set(stillUnresolved.map((r) => r.tx.symbol)));
     for (const symbol of missingSymbols) {
       if (bySymbol.has(symbol)) continue;
@@ -235,7 +283,7 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
 
     let failed = 0;
     let done = 0;
-    for (const r of rows) {
+    for (const r of rowsToImport) {
       const stockId = r.stockId ?? bySymbol.get(r.tx.symbol.toUpperCase())?.id;
       if (stockId) {
         try {
@@ -247,7 +295,7 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
         failed += 1;
       }
       done += 1;
-      setProgress({ done, total: rows.length });
+      setProgress({ done, total: rowsToImport.length });
     }
 
     setFailedCount(failed);
@@ -264,7 +312,15 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
   const buyCount = rows.filter((r) => r.tx.type === 'buy').length;
   const sellCount = rows.length - buyCount;
   const unmatchedCount = rows.filter((r) => r.stockId === null).length;
+  const selectedDuplicateCount = duplicateRows.filter((d) => d.selected).length;
+  const importCount = rows.length + selectedDuplicateCount;
   const editingRow = rows.find((r) => r.rowId === editingRowId) ?? null;
+
+  function toggleDuplicate(rowId: string) {
+    setDuplicateRows((prev) =>
+      prev.map((d) => (d.rowId === rowId ? { ...d, selected: !d.selected } : d))
+    );
+  }
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
@@ -392,6 +448,13 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
                     <SummaryLine label="Alım" value={`${buyCount}`} />
                     <SummaryLine label="Satım" value={`${sellCount}`} />
                     <SummaryLine label="Farklı hisse" value={`${uniqueSymbolCount}`} />
+                    {duplicateRows.length > 0 && (
+                      <SummaryLine
+                        label="Olası duplicate"
+                        value={`${duplicateRows.length}`}
+                        hint="Veritabanında zaten bulunan işlemler; varsayılan olarak içe aktarılmaz"
+                      />
+                    )}
                     {skippedRows.length > 0 && (
                       <SummaryLine
                         label="Atlanan satır"
@@ -411,6 +474,16 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
                     </View>
                   )}
 
+                  {rows.length === 0 && duplicateRows.length > 0 && (
+                    <View style={styles.infoCard}>
+                      <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
+                      <Text style={styles.infoCardText}>
+                        Dosyadaki tüm işlemler veritabanında zaten var. Eklemek istediğin
+                        satırları aşağıdan seçebilirsin.
+                      </Text>
+                    </View>
+                  )}
+
                   {rows.length > 0 && (
                     <>
                       <Text style={styles.tableHint}>
@@ -422,6 +495,38 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
                         ))}
                       </View>
                     </>
+                  )}
+
+                  {duplicateRows.length > 0 && (
+                    <View style={styles.skippedSection}>
+                      <Pressable
+                        style={styles.skippedHeader}
+                        onPress={() => setShowDuplicates((v) => !v)}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: showDuplicates }}
+                      >
+                        <Ionicons
+                          name={showDuplicates ? 'chevron-down' : 'chevron-forward'}
+                          size={18}
+                          color={colors.textMuted}
+                        />
+                        <Text style={styles.skippedHeaderText}>
+                          Olası Duplicate ({duplicateRows.length})
+                        </Text>
+                      </Pressable>
+                      {showDuplicates && (
+                        <>
+                          <Text style={styles.tableHint}>
+                            Bu satırlar veritabanındaki işlemlerle eşleşiyor (aynı hisse, tür,
+                            adet, fiyat ve tarih; saat ±5 dk). Varsayılan olarak içe aktarılmaz —
+                            eklemek istediğin satıra dokunarak seç.
+                          </Text>
+                          {duplicateRows.map((d) => (
+                            <DuplicateRowCard key={d.rowId} row={d} onToggle={() => toggleDuplicate(d.rowId)} />
+                          ))}
+                        </>
+                      )}
+                    </View>
                   )}
 
                   {skippedRows.length > 0 && (
@@ -457,9 +562,9 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
                 </ScrollView>
 
                 <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm }]}>
-                  {rows.length > 0 && (
+                  {importCount > 0 && (
                     <Pressable style={styles.primaryButton} onPress={handleConfirmImport} accessibilityRole="button">
-                      <Text style={styles.primaryButtonText}>{rows.length} İşlemi İçe Aktar</Text>
+                      <Text style={styles.primaryButtonText}>{importCount} İşlemi İçe Aktar</Text>
                     </Pressable>
                   )}
                   <Pressable style={styles.secondaryButton} onPress={reset} accessibilityRole="button">
@@ -530,6 +635,43 @@ function PreviewRowCard({ row, onPress }: { row: PreviewRow; onPress: () => void
           {row.tx.quantity} adet · {row.tx.price.toFixed(2)} TL
         </Text>
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </View>
+    </Pressable>
+  );
+}
+
+function DuplicateRowCard({ row, onToggle }: { row: DuplicateRow; onToggle: () => void }) {
+  const isBuy = row.tx.type === 'buy';
+  return (
+    <Pressable
+      style={[styles.rowCard, styles.dupRowCard, row.selected && styles.dupRowCardSelected]}
+      onPress={onToggle}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: row.selected }}
+    >
+      <Ionicons
+        name={row.selected ? 'checkbox' : 'square-outline'}
+        size={22}
+        color={row.selected ? colors.primary : colors.textMuted}
+        style={styles.dupCheckbox}
+      />
+      <View style={styles.dupRowBody}>
+        <View style={styles.rowCardTop}>
+          <Text style={styles.rowCardDate}>
+            {formatDisplayDate(row.tx.date)} · {row.tx.time}
+          </Text>
+          <View style={[styles.typeBadge, isBuy ? styles.typeBadgeBuy : styles.typeBadgeSell]}>
+            <Text style={[styles.typeBadgeText, { color: isBuy ? colors.profit : colors.loss }]}>
+              {isBuy ? 'Alım' : 'Satım'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.rowCardBottom}>
+          <Text style={styles.rowCardSymbol}>{row.tx.symbol}</Text>
+          <Text style={styles.rowCardDetail}>
+            {row.tx.quantity} adet · {row.tx.price.toFixed(2)} TL
+          </Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -780,6 +922,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontRegular,
     fontSize: typography.caption.fontSize,
   },
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  infoCardText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+  },
   tableHint: {
     color: colors.textMuted,
     fontFamily: typography.fontRegular,
@@ -838,6 +995,10 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     marginBottom: spacing.xs,
   },
+  dupRowCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dupRowCardSelected: { borderColor: colors.primary, backgroundColor: 'rgba(59,130,246,0.08)' },
+  dupCheckbox: { flexShrink: 0 },
+  dupRowBody: { flex: 1 },
   rowCardTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
   rowCardDate: {
     color: colors.textMuted,
