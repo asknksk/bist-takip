@@ -20,7 +20,8 @@ import KeyboardAvoidingContainer from './KeyboardAvoidingContainer';
 import StockPicker from './StockPicker';
 import { addCustomStock, getAllStocks } from '../db/stocksRepo';
 import { addTransaction } from '../db/transactionsRepo';
-import { parseEnparaSheet, ParsedImportTransaction, SkippedImportRow } from '../domain/importParser';
+import { parseEnparaSheet, parseMidasPdf, ParsedImportTransaction, SkippedImportRow } from '../domain/importParser';
+import { extractPdfText } from '../utils/pdf';
 import { Stock, TransactionType } from '../domain/types';
 import { colors, radius, spacing, touchTarget, typography } from '../theme/theme';
 
@@ -30,7 +31,9 @@ interface ImportExcelModalProps {
   onImported: () => void;
 }
 
-type Step = 'pick' | 'preview' | 'importing' | 'done';
+type Step = 'source' | 'pick' | 'preview' | 'importing' | 'done';
+
+type ImportSource = 'enpara' | 'midas';
 
 interface PreviewRow {
   rowId: string;
@@ -65,7 +68,8 @@ function resolveStockId(symbol: string, stocks: Stock[]): number | null {
 
 export default function ImportExcelModal({ visible, onClose, onImported }: ImportExcelModalProps) {
   const insets = useSafeAreaInsets();
-  const [step, setStep] = useState<Step>('pick');
+  const [step, setStep] = useState<Step>('source');
+  const [source, setSource] = useState<ImportSource | null>(null);
   const [fileName, setFileName] = useState('');
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -76,7 +80,8 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
   const [failedCount, setFailedCount] = useState(0);
 
   function reset() {
-    setStep('pick');
+    setStep('source');
+    setSource(null);
     setFileName('');
     setRows([]);
     setSkippedRows([]);
@@ -91,7 +96,29 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
     onClose();
   }
 
-  async function handlePickFile() {
+  async function setParsedResult(
+    result: { transactions: ParsedImportTransaction[]; skippedRows: SkippedImportRow[] },
+    pickedFileName: string
+  ) {
+    if (result.transactions.length === 0 && result.skippedRows.length === 0) {
+      showAlert('Hata', 'Dosyada içe aktarılacak hisse alım/satım işlemi bulunamadı.');
+      return;
+    }
+    const currentStocks = await getAllStocks();
+    setStocks(currentStocks);
+    setRows(
+      result.transactions.map((tx, index) => ({
+        rowId: `row-${index}`,
+        tx,
+        stockId: resolveStockId(tx.symbol, currentStocks),
+      }))
+    );
+    setFileName(pickedFileName);
+    setSkippedRows(result.skippedRows);
+    setStep('preview');
+  }
+
+  async function handlePickEnparaExcel() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
@@ -109,8 +136,8 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, raw: false });
 
-      const { transactions, skippedRows: parsedSkippedRows } = parseEnparaSheet(sheetRows);
-      if (transactions.length === 0 && parsedSkippedRows.length === 0) {
+      const parsed = parseEnparaSheet(sheetRows);
+      if (parsed.transactions.length === 0 && parsed.skippedRows.length === 0) {
         console.error(
           '[ImportExcelModal] parsed 0 transactions. sheetNames=',
           workbook.SheetNames,
@@ -122,25 +149,45 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
         showAlert('Hata', 'Dosyada içe aktarılacak hisse alım/satım işlemi bulunamadı.');
         return;
       }
-
-      const currentStocks = await getAllStocks();
-      setStocks(currentStocks);
-      setRows(
-        transactions.map((tx, index) => ({
-          rowId: `row-${index}`,
-          tx,
-          stockId: resolveStockId(tx.symbol, currentStocks),
-        }))
-      );
-      setFileName(asset.name);
-      setSkippedRows(parsedSkippedRows);
-      setStep('preview');
+      await setParsedResult(parsed, asset.name);
     } catch (error) {
-      console.error('[ImportExcelModal] file read/parse failed:', error);
+      console.error('[ImportExcelModal] Enpara file read/parse failed:', error);
       const detail = error instanceof Error ? error.message : String(error);
       showAlert(
         'Hata',
         `Dosya okunamadı. Lütfen Enpara.com hesap hareketleri (.xls) dosyası seçtiğinden emin ol.\n\n(Ayrıntı: ${detail})`
+      );
+    }
+  }
+
+  async function handlePickMidasPdf() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || result.assets.length === 0) return;
+
+      const asset = result.assets[0];
+      const response = await fetch(asset.uri);
+      const arrayBuffer = await response.arrayBuffer();
+      const pdfText = await extractPdfText(new Uint8Array(arrayBuffer));
+
+      const parsed = parseMidasPdf(pdfText);
+      if (parsed.transactions.length === 0 && parsed.skippedRows.length === 0) {
+        showAlert(
+          'Hata',
+          'Dosyada içe aktarılacak hisse alım/satım işlemi bulunamadı. Midas hesap ekstresi PDF dosyası seçtiğinden emin ol.'
+        );
+        return;
+      }
+      await setParsedResult(parsed, asset.name);
+    } catch (error) {
+      console.error('[ImportExcelModal] Midas PDF read/parse failed:', error);
+      const detail = error instanceof Error ? error.message : String(error);
+      showAlert(
+        'Hata',
+        `PDF okunamadı. Lütfen Midas hesap ekstresi PDF dosyası seçtiğinden emin ol.\n\n(Ayrıntı: ${detail})`
       );
     }
   }
@@ -238,7 +285,13 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
         ) : (
           <>
             <View style={styles.header}>
-              <Text style={styles.headerTitle}>Excel'den İçe Aktar</Text>
+              <Text style={styles.headerTitle}>
+                {step === 'source'
+                  ? 'İçe Aktar'
+                  : source === 'midas'
+                    ? "Midas'tan İçe Aktar"
+                    : "Enpara'dan İçe Aktar"}
+              </Text>
               {step !== 'importing' && (
                 <Pressable onPress={handleClose} accessibilityRole="button" accessibilityLabel="Kapat" hitSlop={8}>
                   <Ionicons name="close" size={24} color={colors.textSecondary} />
@@ -246,15 +299,77 @@ export default function ImportExcelModal({ visible, onClose, onImported }: Impor
               )}
             </View>
 
-            {step === 'pick' && (
+            {step === 'source' && (
               <ScrollView contentContainerStyle={styles.body}>
                 <View style={styles.centerBox}>
                   <Ionicons name="document-attach-outline" size={48} color={colors.textMuted} />
                   <Text style={styles.infoText}>
-                    Enpara.com'dan indirdiğin "Yatırım Hesap Hareketleri" (.xls) dosyasını seç. Hisse
-                    alım/satım işlemlerin otomatik olarak eklenecek.
+                    Hisse alım/satım işlemlerini içe aktarmak için kaynak seç.
                   </Text>
-                  <Pressable style={styles.primaryButton} onPress={handlePickFile} accessibilityRole="button">
+                </View>
+
+                <View style={styles.sourceCard}>
+                  <Pressable
+                    style={styles.sourceOption}
+                    onPress={() => {
+                      setSource('enpara');
+                      setStep('pick');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Enpara Excel dosyası seç"
+                  >
+                    <Ionicons name="document-text-outline" size={24} color={colors.primary} />
+                    <View style={styles.sourceTextGroup}>
+                      <Text style={styles.sourceTitle}>Enpara (Excel)</Text>
+                      <Text style={styles.sourceSubtitle}>
+                        Enpara.com'dan indirdiğin "Yatırım Hesap Hareketleri" (.xls) dosyası
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </Pressable>
+
+                  <View style={styles.sourceDivider} />
+
+                  <Pressable
+                    style={styles.sourceOption}
+                    onPress={() => {
+                      setSource('midas');
+                      setStep('pick');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Midas PDF dosyası seç"
+                  >
+                    <Ionicons name="document-outline" size={24} color={colors.primary} />
+                    <View style={styles.sourceTextGroup}>
+                      <Text style={styles.sourceTitle}>Midas (PDF)</Text>
+                      <Text style={styles.sourceSubtitle}>
+                        Midas'tan indirdiğin hesap ekstresi (.pdf) dosyası
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              </ScrollView>
+            )}
+
+            {step === 'pick' && (
+              <ScrollView contentContainerStyle={styles.body}>
+                <View style={styles.centerBox}>
+                  <Ionicons
+                    name={source === 'midas' ? 'document-outline' : 'document-attach-outline'}
+                    size={48}
+                    color={colors.textMuted}
+                  />
+                  <Text style={styles.infoText}>
+                    {source === 'midas'
+                      ? "Midas hesap ekstresi PDF dosyasını seç. Gerçekleşen hisse alım/satım işlemlerin otomatik olarak eklenecek."
+                      : "Enpara.com'dan indirdiğin \"Yatırım Hesap Hareketleri\" (.xls) dosyasını seç. Hisse alım/satım işlemlerin otomatik olarak eklenecek."}
+                  </Text>
+                  <Pressable
+                    style={styles.primaryButton}
+                    onPress={source === 'midas' ? handlePickMidasPdf : handlePickEnparaExcel}
+                    accessibilityRole="button"
+                  >
                     <Ionicons name="folder-open-outline" size={18} color={colors.onPrimary} />
                     <Text style={styles.primaryButtonText}>Dosya Seç</Text>
                   </Pressable>
@@ -594,6 +709,36 @@ const styles = StyleSheet.create({
   },
   body: { flexGrow: 1, paddingBottom: spacing.lg },
   centerBox: { alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingVertical: spacing.xl },
+  sourceCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: spacing.md,
+  },
+  sourceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    minHeight: touchTarget.minSize,
+  },
+  sourceTextGroup: { flex: 1 },
+  sourceTitle: {
+    color: colors.textPrimary,
+    fontFamily: typography.fontSemiBold,
+    fontSize: typography.body.fontSize,
+  },
+  sourceSubtitle: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontRegular,
+    fontSize: typography.caption.fontSize,
+    marginTop: 2,
+  },
+  sourceDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
   infoText: {
     color: colors.textSecondary,
     fontFamily: typography.fontRegular,

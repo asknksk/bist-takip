@@ -1,4 +1,4 @@
-import { parseEnparaSheet } from '../importParser';
+import { parseEnparaSheet, parseMidasPdf } from '../importParser';
 
 function row(
   date: string,
@@ -181,5 +181,128 @@ describe('parseEnparaSheet', () => {
   test('returns no transactions and no false skips when the header row cannot be found', () => {
     const rows = [['this', 'is', 'not', 'a', 'recognizable', 'enpara', 'export']];
     expect(parseEnparaSheet(rows)).toEqual({ transactions: [], skippedCount: 0, skippedRows: [] });
+  });
+});
+
+describe('parseMidasPdf', () => {
+  test('parses an executed buy line: extracts date, time, symbol, quantity, price', () => {
+    const text =
+      '10/09/26 11:42:19 Piyasa Emri AKBNK Alış Gerçekleşti TRY 18 - 18 73,15 0,00 1316,70';
+    const result = parseMidasPdf(text);
+    expect(result.transactions).toEqual([
+      {
+        date: '2026-09-10',
+        time: '11:42',
+        type: 'buy',
+        symbol: 'AKBNK',
+        quantity: 18,
+        price: 73.15,
+      },
+    ]);
+    expect(result.skippedCount).toBe(0);
+  });
+
+  test('parses an executed sell line', () => {
+    const text =
+      '05/10/26 14:53:14 Limit Emri TUPRS Satış Gerçekleşti TRY 19 - 19 387,75 0,00 7367,25';
+    const result = parseMidasPdf(text);
+    expect(result.transactions).toEqual([
+      {
+        date: '2026-10-05',
+        time: '14:53',
+        type: 'sell',
+        symbol: 'TUPRS',
+        quantity: 19,
+        price: 387.75,
+      },
+    ]);
+  });
+
+  test('skips non-executed lines (İptal Edildi, Süresi Doldu)', () => {
+    const text = [
+      '17/09/26 10:54:29 Limit Emri KTLEV Satış Süresi Doldu TRY 37 - 0 0,00 - 0,00',
+      '05/10/26 15:03:15 Limit Emri ASELS Alış İptal Edildi TRY 20 - 0 0,00 - 0,00',
+      '10/09/26 11:37:26 Limit Emri NETGL Alış Kalanın Süresi Doldu TRY 78 - 56 25,52 0,00 1429,12',
+    ].join('\n');
+    const result = parseMidasPdf(text);
+    expect(result.transactions).toEqual([]);
+    expect(result.skippedCount).toBe(3);
+    expect(result.skippedRows.every((r) => r.reason === 'İşlem gerçekleşmedi')).toBe(true);
+  });
+
+  test('ignores non-transaction lines (headers, footers, other sections)', () => {
+    const text = [
+      'Midas Menkul Değerler A.Ş.',
+      'PORTFÖY ÖZETİ ( )09/10/26',
+      'ASELS - Aselsan 341 351,24 TRY 4,75 TRY 119776,25 TRY',
+      'HESAP İŞLEMLERİ (  - )08/09/26 09/10/26',
+      '10/09/26 11:36:51 Para Yatırma Yapı Kredi - TR920006701000000048259919 Gerçekleşti 2000,00 TRY',
+      '* Kar zarar gün sonu piyasa kapanış fiyatı ile hesaplanmıştır.',
+    ].join('\n');
+    const result = parseMidasPdf(text);
+    expect(result.transactions).toEqual([]);
+    expect(result.skippedCount).toBe(0);
+  });
+
+  test('parses symbol with dot (e.g. ALTIN.S1)', () => {
+    const text =
+      '05/10/26 16:52:28 Limit Emri ALTIN.S1 Alış Gerçekleşti TRY 300 - 300 71,36 0,00 21408,00';
+    const result = parseMidasPdf(text);
+    expect(result.transactions).toEqual([
+      {
+        date: '2026-10-05',
+        time: '16:52',
+        type: 'buy',
+        symbol: 'ALTIN.S1',
+        quantity: 300,
+        price: 71.36,
+      },
+    ]);
+  });
+
+  test('sorts transactions chronologically by date then time', () => {
+    const text = [
+      '05/10/26 14:53:14 Limit Emri TUPRS Satış Gerçekleşti TRY 19 - 19 387,75 0,00 7367,25',
+      '10/09/26 11:42:19 Piyasa Emri AKBNK Alış Gerçekleşti TRY 18 - 18 73,15 0,00 1316,70',
+      '05/10/26 14:53:40 Piyasa Emri TKNKA Alış Gerçekleşti TRY 141 - 141 51,30 0,00 7233,30',
+    ].join('\n');
+    const result = parseMidasPdf(text);
+    expect(result.transactions.map((t) => `${t.date} ${t.time}`)).toEqual([
+      '2026-09-10 11:42',
+      '2026-10-05 14:53',
+      '2026-10-05 14:53',
+    ]);
+  });
+
+  test('handles multi-page content (lines from all pages)', () => {
+    const text = [
+      '06/10/26 13:28:36 Piyasa Emri ASELS Alış Gerçekleşti TRY 57 - 57 368,00 0,00 20976,00',
+      '06/10/26 16:49:40 Limit Emri ASELS Satış Gerçekleşti TRY 57 - 57 371,00 0,00 21147,00',
+    ].join('\n');
+    const result = parseMidasPdf(text);
+    expect(result.transactions).toHaveLength(2);
+    expect(result.transactions[0].type).toBe('buy');
+    expect(result.transactions[1].type).toBe('sell');
+  });
+
+  test('returns empty result for empty text', () => {
+    expect(parseMidasPdf('')).toEqual({ transactions: [], skippedCount: 0, skippedRows: [] });
+  });
+
+  test('full example: mixed executed and non-executed lines', () => {
+    const text = [
+      '10/09/26 11:37:26 Limit Emri NETGL Alış Kalanın Süresi Doldu TRY 78 - 56 25,52 0,00 1429,12',
+      '10/09/26 11:42:19 Piyasa Emri AKBNK Alış Gerçekleşti TRY 18 - 18 73,15 0,00 1316,70',
+      '11/09/26 17:59:48 Piyasa Emri AKBNK Satış Gerçekleşti TRY 18 - 18 72,75 0,00 1309,50',
+      '17/09/26 10:54:29 Limit Emri KTLEV Satış Süresi Doldu TRY 37 - 0 0,00 - 0,00',
+      '29/09/26 11:49:15 Limit Emri TUPRS Alış Gerçekleşti TRY 19 - 19 396,75 0,00 7538,25',
+    ].join('\n');
+    const result = parseMidasPdf(text);
+    expect(result.transactions).toEqual([
+      { date: '2026-09-10', time: '11:42', type: 'buy', symbol: 'AKBNK', quantity: 18, price: 73.15 },
+      { date: '2026-09-11', time: '17:59', type: 'sell', symbol: 'AKBNK', quantity: 18, price: 72.75 },
+      { date: '2026-09-29', time: '11:49', type: 'buy', symbol: 'TUPRS', quantity: 19, price: 396.75 },
+    ]);
+    expect(result.skippedCount).toBe(2);
   });
 });

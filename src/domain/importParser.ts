@@ -159,3 +159,111 @@ export function parseEnparaSheet(rows: unknown[][]): ImportParseResult {
 
   return { transactions, skippedCount: skippedRows.length, skippedRows };
 }
+
+// --- Midas PDF parsing ---
+
+/**
+ * Regex for a single Midas investment transaction line extracted from the
+ * PDF text. Format example:
+ *   10/09/26 11:42:19 Piyasa Emri AKBNK Alış Gerçekleşti TRY 18 - 18 73,15 0,00 1316,70
+ * Groups: date, time, orderType, symbol, direction, status, currency,
+ *         orderQty, orderAmount, executedQty, avgPrice, fee, totalAmount.
+ */
+const MIDAS_LINE_REGEX =
+  /^(\d{2}\/\d{2}\/\d{2})\s+(\d{2}:\d{2}:\d{2})\s+(.*?)\s+([A-Z][A-Z0-9.]*)\s+(Alış|Satış)\s+(.*?)\s+([A-Z]{3})\s+(\d+)\s+(-|\d+)\s+(\d+)\s+([\d,.]+)\s+([\d,.]+|-)\s+([\d,.]+)$/;
+
+function parseMidasDate(raw: string): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{2})$/.exec(raw.trim());
+  if (!match) return null;
+  const [, day, month, year] = match;
+  return `20${year}-${month}-${day}`;
+}
+
+function parseMidasTime(raw: string): string {
+  const match = /^(\d{2}:\d{2})/.exec(raw.trim());
+  return match ? match[1] : '00:00';
+}
+
+function parseMidasNumber(raw: string): number {
+  const cleaned = raw.replace(/\./g, '').replace(',', '.');
+  return Number(cleaned);
+}
+
+/**
+ * Parses the extracted text content of a Midas Menkul "Hesap Ekstresi" PDF.
+ * Only lines with status "Gerçekleşti" (executed) become transactions;
+ * cancelled (İptal Edildi), expired (Süresi Doldu / Kalanın Süresi Doldu),
+ * and non-trade sections are skipped.
+ *
+ * @param pdfText Full text extracted from the PDF (all pages concatenated).
+ */
+export function parseMidasPdf(pdfText: string): ImportParseResult {
+  const transactions: ParsedImportTransaction[] = [];
+  const skippedRows: SkippedImportRow[] = [];
+
+  const lines = pdfText.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const match = MIDAS_LINE_REGEX.exec(trimmed);
+    if (!match) continue; // not a transaction line (header, footer, other section)
+
+    const [, dateRaw, timeRaw, orderType, symbol, direction, status, , , , executedQtyRaw, avgPriceRaw, , totalAmountRaw] = match;
+
+    if (status !== 'Gerçekleşti') {
+      skippedRows.push({
+        date: dateRaw,
+        orderType,
+        description: `${symbol} ${direction} — ${status}`,
+        amount: totalAmountRaw,
+        reason: 'İşlem gerçekleşmedi',
+      });
+      continue;
+    }
+
+    const dateIso = parseMidasDate(dateRaw);
+    if (!dateIso) {
+      skippedRows.push({
+        date: dateRaw,
+        orderType,
+        description: `${symbol} ${direction}`,
+        amount: totalAmountRaw,
+        reason: 'Tarih okunamadı',
+      });
+      continue;
+    }
+
+    const time = parseMidasTime(timeRaw);
+    const quantity = parseMidasNumber(executedQtyRaw);
+    const price = parseMidasNumber(avgPriceRaw);
+
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price <= 0) {
+      skippedRows.push({
+        date: dateRaw,
+        orderType,
+        description: `${symbol} ${direction}`,
+        amount: totalAmountRaw,
+        reason: 'Adet veya fiyat geçersiz',
+      });
+      continue;
+    }
+
+    transactions.push({
+      date: dateIso,
+      time,
+      type: direction === 'Alış' ? 'buy' : 'sell',
+      symbol: symbol.toUpperCase(),
+      quantity,
+      price,
+    });
+  }
+
+  transactions.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return a.time.localeCompare(b.time);
+  });
+
+  return { transactions, skippedCount: skippedRows.length, skippedRows };
+}
