@@ -42,3 +42,5 @@ yarn-error.*
 
 # Claude Code session-local state
 .claude/
+
+AGENTS.md
